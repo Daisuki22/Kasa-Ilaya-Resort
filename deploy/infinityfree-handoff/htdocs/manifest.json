@@ -1,0 +1,17 @@
+{
+  "name": "Kasa Ilaya Resort & Event Place",
+  "short_name": "Kasa Ilaya",
+  "description": "Private resort packages, amenities, events, and online reservations for Kasa Ilaya Resort & Event Place.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf8f4",
+  "theme_color": "#2d7650",
+  "icons": [
+    {
+      "src": "/img/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

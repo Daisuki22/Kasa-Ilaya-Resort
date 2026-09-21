@@ -9,6 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -65,6 +73,16 @@ export default function SystemSettingsManager({ embedded = false, actorUser = nu
     setAmenities(settings?.amenities || defaultSiteSettings.amenities);
     setResortGallery(settings?.resort_gallery || defaultSiteSettings.resort_gallery);
   }, [settings]);
+
+  const previewHeroImages = Array.isArray(form.hero_images) && form.hero_images.length > 0
+    ? form.hero_images.filter(Boolean)
+    : [form.hero_image_url || defaultSiteSettings.hero_image_url].filter(Boolean);
+  const previewLogo = form.logo_url?.trim() || "";
+  const previewSiteName = form.site_name?.trim() || defaultSiteSettings.site_name;
+  const previewBadge = form.hero_badge_text?.trim() || defaultSiteSettings.hero_badge_text;
+  const previewTitleLine1 = form.hero_title_line1?.trim() || defaultSiteSettings.hero_title_line1;
+  const previewTitleLine2 = form.hero_title_line2?.trim() || defaultSiteSettings.hero_title_line2;
+  const previewDescription = form.hero_description?.trim() || defaultSiteSettings.hero_description;
 
   const updateAmenity = (index, field, value) =>
     setAmenities((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
@@ -295,7 +313,7 @@ export default function SystemSettingsManager({ embedded = false, actorUser = nu
   }
 
   return (
-    <div className={embedded || section ? "space-y-6" : "max-w-7xl mx-auto px-4 sm:px-6 py-10 space-y-6"}>
+    <div className={embedded || section ? "space-y-6" : "w-full max-w-none space-y-6 px-2 py-6 sm:px-3 lg:px-4"}>
       {!embedded && !section && (
         <div className="flex flex-col gap-2">
           <h1 className="font-display text-3xl font-bold text-foreground">Manage System Settings</h1>
@@ -323,7 +341,7 @@ export default function SystemSettingsManager({ embedded = false, actorUser = nu
               id="site-name"
               value={form.site_name}
               onChange={(event) => setForm((prev) => ({ ...prev, site_name: event.target.value }))}
-              placeholder="Kasa Ilaya"
+              placeholder="kaka liana"
             />
           </div>
 
@@ -479,6 +497,104 @@ export default function SystemSettingsManager({ embedded = false, actorUser = nu
               onChange={(event) => setForm((prev) => ({ ...prev, hero_description: event.target.value }))}
             />
           </div>
+
+          <div className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <Label>Homepage Preview</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Live preview of the homepage hero section using the values above.
+                </p>
+              </div>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button type="button" variant="outline" className="gap-2 self-start">
+                    Show Preview
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-6xl gap-0 overflow-hidden p-0 sm:max-h-[90vh]">
+                  <DialogHeader className="border-b border-border px-6 py-5 text-left">
+                    <DialogTitle className="font-display text-2xl text-foreground">Homepage Preview</DialogTitle>
+                    <DialogDescription className="mt-2 text-sm leading-6 text-muted-foreground">
+                      Popup preview of the homepage hero section based on the current system settings values.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="overflow-y-auto">
+                    <div className="overflow-hidden bg-card">
+                      <div className="relative min-h-[420px] bg-slate-950 text-white">
+                        {previewHeroImages.length > 0 ? (
+                          <img
+                            src={previewHeroImages[0]}
+                            alt="Homepage hero preview"
+                            className="absolute inset-0 h-full w-full object-cover"
+                          />
+                        ) : null}
+                        <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/45 to-black/10" />
+                        <div className="relative flex min-h-[420px] flex-col justify-between p-6 sm:p-8 lg:p-12">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/90 shadow-lg">
+                              {previewLogo ? (
+                                <img src={previewLogo} alt="Homepage logo preview" className="h-full w-full object-contain" />
+                              ) : (
+                                <span className="font-display text-lg font-bold text-primary">
+                                  {previewSiteName.charAt(0).toUpperCase()}
+                                </span>
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-display text-lg font-semibold text-white">{previewSiteName}</p>
+                              <p className="text-xs uppercase tracking-[0.2em] text-white/70">Resort Preview</p>
+                            </div>
+                          </div>
+
+                          <div className="max-w-3xl space-y-4">
+                            <div className="inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.24em] text-white/90 backdrop-blur-sm">
+                              {previewBadge}
+                            </div>
+                            <div className="space-y-1">
+                              <h3 className="font-display text-4xl font-bold leading-tight text-white sm:text-5xl lg:text-6xl">
+                                {previewTitleLine1}
+                              </h3>
+                              <h4 className="font-display text-3xl font-semibold leading-tight text-white/90 sm:text-4xl lg:text-5xl">
+                                {previewTitleLine2}
+                              </h4>
+                            </div>
+                            <p className="max-w-2xl text-sm leading-7 text-white/80 sm:text-base lg:text-lg">
+                              {previewDescription}
+                            </p>
+                            <div className="flex flex-wrap gap-3 pt-2">
+                              <div className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-slate-900 shadow-sm">
+                                Explore Packages
+                              </div>
+                              <div className="rounded-full border border-white/30 bg-white/10 px-5 py-2 text-sm font-semibold text-white backdrop-blur-sm">
+                                Learn More
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 border-t border-border bg-muted/20 p-4 sm:grid-cols-3 lg:p-6">
+                        <div className="rounded-2xl bg-background/90 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Gallery</p>
+                          <p className="mt-2 text-sm text-foreground">Homepage gallery and resort visuals continue below the hero section.</p>
+                        </div>
+                        <div className="rounded-2xl bg-background/90 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Amenities</p>
+                          <p className="mt-2 text-sm text-foreground">Feature cards highlight your amenities and guest experience details.</p>
+                        </div>
+                        <div className="rounded-2xl bg-background/90 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Rules & Reviews</p>
+                          <p className="mt-2 text-sm text-foreground">Guest rules, reviews, and calls to action appear further down the homepage.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
         </CardContent>
       </Card>
       )}
@@ -486,21 +602,21 @@ export default function SystemSettingsManager({ embedded = false, actorUser = nu
       {(embedded || !section || section === "packages-banner") && canManageSuperAdminMedia && (
       <Card>
         <CardHeader>
-          <CardTitle className="font-display text-2xl">Packages Page Banner</CardTitle>
+          <CardTitle className="font-display text-2xl">Guest Page Banners</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Change the rotating background photos used in the guest-facing Packages page banner. Super admins only.
+            Change the background photos used on guest-facing page banners, excluding the homepage hero. Super admins only.
           </p>
 
           <div className="space-y-3">
-            <Label>Packages Banner Images</Label>
+            <Label>Page Banner Images</Label>
             <div className="rounded-xl border border-border bg-muted/20 p-3">
               <div className="mb-3 flex h-40 items-center justify-center overflow-hidden rounded-lg bg-muted">
                 {form.packages_banner_images?.[0] ? (
                   <img src={form.packages_banner_images[0]} alt="Packages banner preview" className="h-full w-full object-cover" />
                 ) : (
-                  <p className="text-xs text-muted-foreground">No packages banner images selected</p>
+                  <p className="text-xs text-muted-foreground">No page banner images selected</p>
                 )}
               </div>
               <div className="flex gap-2">
@@ -508,7 +624,7 @@ export default function SystemSettingsManager({ embedded = false, actorUser = nu
                   <Button type="button" variant="outline" className="w-full gap-2" asChild>
                     <span>
                       {uploadingPackagesBanner ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                      Upload Banner Images
+                      Upload Page Banner Images
                     </span>
                   </Button>
                   <input
@@ -558,7 +674,7 @@ export default function SystemSettingsManager({ embedded = false, actorUser = nu
                       </div>
                     ))}
                   </div>
-                  <p className="text-xs text-muted-foreground">The first image is used as the initial Packages banner cover and rotates with the rest on the guest page.</p>
+                  <p className="text-xs text-muted-foreground">The first image is used as the initial banner cover on guest pages outside the homepage.</p>
                 </div>
               ) : null}
             </div>

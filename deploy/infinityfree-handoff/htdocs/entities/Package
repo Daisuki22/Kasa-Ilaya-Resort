@@ -1,0 +1,71 @@
+{
+  "name": "Package",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Package name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Package description"
+    },
+    "tour_type": {
+      "type": "string",
+      "enum": [
+        "day_tour",
+        "night_tour",
+        "22_hours"
+      ],
+      "description": "Type of tour"
+    },
+    "price": {
+      "type": "number",
+      "description": "Legacy base price in PHP"
+    },
+    "day_tour_price": {
+      "type": "number",
+      "description": "Day tour price in PHP"
+    },
+    "night_tour_price": {
+      "type": "number",
+      "description": "Night tour price in PHP"
+    },
+    "twenty_two_hour_price": {
+      "type": "number",
+      "description": "22-hour stay price in PHP"
+    },
+    "max_guests": {
+      "type": "number",
+      "description": "Maximum number of guests"
+    },
+    "inclusions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What's included in the package"
+    },
+    "gallery_images": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Gallery image URLs for the package slider"
+    },
+    "image_url": {
+      "type": "string",
+      "description": "Primary cover image URL"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether package is available"
+    }
+  },
+  "required": [
+    "name",
+    "tour_type",
+    "price"
+  ]
+}

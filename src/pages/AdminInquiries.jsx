@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { Loader2, MessageSquareMore, Send } from "lucide-react";
+import { Archive, Loader2, MessageSquareMore, Send } from "lucide-react";
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { toast } from "sonner";
 import { baseClient } from "@/api/baseClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,9 +12,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+const filterOptions = [
+  { value: "all", label: "All Inquiries" },
+  { value: "open", label: "Open" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "resolved", label: "Resolved" },
+  { value: "closed", label: "Closed" },
+  { value: "archived", label: "Archived" },
+];
 
 const statusOptions = [
-  { value: "all", label: "All Inquiries" },
   { value: "open", label: "Open" },
   { value: "in_progress", label: "In Progress" },
   { value: "resolved", label: "Resolved" },
@@ -25,6 +44,30 @@ const statusClasses = {
   in_progress: "bg-primary/10 text-primary border-primary/20",
   resolved: "bg-emerald-100 text-emerald-700 border-emerald-200",
   closed: "bg-muted text-muted-foreground border-border",
+  archived: "bg-amber-500/10 text-amber-700 border-amber-500/30",
+};
+
+const statusChartColors = {
+  open: "hsl(var(--secondary))",
+  in_progress: "hsl(var(--primary))",
+  resolved: "hsl(var(--chart-3))",
+  closed: "hsl(var(--muted-foreground))",
+  archived: "hsl(var(--chart-2))",
+};
+
+const InquiryTooltip = ({ active, payload }) => {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  const item = payload[0];
+
+  return (
+    <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-lg">
+      <p className="font-medium capitalize text-foreground">{item.name}</p>
+      <p className="text-muted-foreground">{item.value} {item.value === 1 ? "inquiry" : "inquiries"}</p>
+    </div>
+  );
 };
 
 export default function AdminInquiries() {
@@ -33,9 +76,12 @@ export default function AdminInquiries() {
   const [selectedInquiryId, setSelectedInquiryId] = useState(null);
   const [replyMessage, setReplyMessage] = useState("");
   const [statusValue, setStatusValue] = useState("open");
+  const [archiveId, setArchiveId] = useState(null);
   const [isReplying, setIsReplying] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
   const [user, setUser] = useState(null);
+  const messagesContainerRef = useRef(null);
 
   useEffect(() => {
     baseClient.auth.me().then(setUser).catch(() => setUser(null));
@@ -44,13 +90,24 @@ export default function AdminInquiries() {
   const { data: inquiries = [], isLoading } = useQuery({
     queryKey: ["admin-inquiries", statusFilter],
     queryFn: () => baseClient.inquiries.list(statusFilter === "all" ? undefined : statusFilter),
+    refetchInterval: 15000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: selectedThread, isLoading: isLoadingThread } = useQuery({
     queryKey: ["admin-inquiry-thread", selectedInquiryId],
     queryFn: () => baseClient.inquiries.thread(selectedInquiryId),
     enabled: Boolean(selectedInquiryId),
+    refetchInterval: 15000,
+    refetchOnWindowFocus: true,
   });
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [selectedInquiryId, selectedThread?.messages?.length, selectedThread?.messages?.at(-1)?.id]);
 
   useEffect(() => {
     if (!inquiries.length) {
@@ -73,6 +130,16 @@ export default function AdminInquiries() {
     in_progress: inquiries.filter((entry) => entry.status === "in_progress").length,
     resolved: inquiries.filter((entry) => entry.status === "resolved").length,
   }), [inquiries]);
+
+  const statusChartData = useMemo(() => (
+    statusOptions
+      .map((option) => ({
+        name: option.label,
+        status: option.value,
+        value: inquiries.filter((entry) => entry.status === option.value).length,
+      }))
+      .filter((item) => item.value > 0)
+  ), [inquiries]);
 
   const refreshQueries = async () => {
     await Promise.all([
@@ -104,6 +171,20 @@ export default function AdminInquiries() {
     }
   };
 
+  const handleReplyKeyDown = (event) => {
+    if (event.key !== "Enter" || event.shiftKey) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (isReplying || isSelectedInquiryClosed || !replyMessage.trim()) {
+      return;
+    }
+
+    void handleSendReply(event);
+  };
+
   const handleStatusUpdate = async () => {
     if (!selectedInquiryId) {
       return;
@@ -121,10 +202,33 @@ export default function AdminInquiries() {
     }
   };
 
-  const isSelectedInquiryClosed = (selectedThread?.inquiry?.status || "open") === "closed";
+  const handleArchive = async () => {
+    if (!archiveId) {
+      return;
+    }
+
+    try {
+      setIsArchiving(true);
+      await baseClient.inquiries.archive(archiveId);
+      if (selectedInquiryId === archiveId) {
+        setSelectedInquiryId(null);
+      }
+      await refreshQueries();
+      toast.success("Inquiry archived.");
+    } catch (error) {
+      toast.error(error?.message || "Unable to archive inquiry.");
+    } finally {
+      setIsArchiving(false);
+      setArchiveId(null);
+    }
+  };
+
+  const archiveInquiry = inquiries.find((inquiry) => inquiry.id === archiveId);
+  const selectedInquiryStatus = selectedThread?.inquiry?.status || "open";
+  const isSelectedInquiryClosed = selectedInquiryStatus === "closed" || selectedInquiryStatus === "archived";
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
+    <div className="w-full max-w-none px-2 py-6 sm:px-3 lg:px-4">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8">
         <div>
           <h1 className="font-display text-3xl font-bold text-foreground">Inquiry Inbox</h1>
@@ -136,7 +240,7 @@ export default function AdminInquiries() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {statusOptions.map((option) => (
+              {filterOptions.map((option) => (
                 <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
               ))}
             </SelectContent>
@@ -144,7 +248,7 @@ export default function AdminInquiries() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 mb-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 mb-6 text-foreground">
         {[
           { label: "Total", value: counters.total },
           { label: "Open", value: counters.open },
@@ -152,7 +256,7 @@ export default function AdminInquiries() {
           { label: "Resolved", value: counters.resolved },
         ].map((item) => (
           <Card key={item.label} className="border-border/80 shadow-sm">
-            <CardContent className="p-5">
+            <CardContent className="p-5 sm:p-6 sm:pt-6">
               <p className="text-sm text-muted-foreground">{item.label}</p>
               <p className="mt-2 text-3xl font-semibold text-foreground">{item.value}</p>
             </CardContent>
@@ -160,7 +264,59 @@ export default function AdminInquiries() {
         ))}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+      <Card className="mb-6 border-border/80 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="font-display text-2xl">Inquiry Status</CardTitle>
+          <p className="text-sm text-muted-foreground">Quickly compare open, active, resolved, and closed conversations.</p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-6 lg:grid-cols-[20rem_1fr] lg:items-center">
+            <div className="h-64">
+              {statusChartData.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={statusChartData} dataKey="value" nameKey="name" innerRadius={58} outerRadius={96} paddingAngle={3}>
+                      {statusChartData.map((item) => (
+                        <Cell key={item.status} fill={statusChartColors[item.status] || "hsl(var(--muted-foreground))"} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<InquiryTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No inquiries to chart.</div>
+              )}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {statusOptions.map((option) => {
+                const value = inquiries.filter((entry) => entry.status === option.value).length;
+                const percent = counters.total ? Math.round((value / counters.total) * 100) : 0;
+
+                return (
+                  <div key={option.value} className="rounded-lg border border-border bg-background p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: statusChartColors[option.value] }} />
+                        {option.label}
+                      </p>
+                      <span className="text-sm font-semibold">{value}</span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${percent}%`, backgroundColor: statusChartColors[option.value] }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">{percent}% of current filter</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.05fr)_minmax(26rem,0.95fr)]">
         <Card className="border-border/80 shadow-sm">
           <CardHeader>
             <CardTitle className="font-display text-2xl">Inquiry List</CardTitle>
@@ -173,13 +329,14 @@ export default function AdminInquiries() {
             ) : inquiries.length === 0 ? (
               <div className="px-6 py-16 text-center text-sm text-muted-foreground">No inquiries found for this filter.</div>
             ) : (
-              <Table>
+              <Table className="min-w-0 table-fixed" containerClassName="overflow-x-hidden">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Guest</TableHead>
+                    <TableHead className="w-[24%]">Guest</TableHead>
                     <TableHead>Subject</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Updated</TableHead>
+                    <TableHead className="w-28">Status</TableHead>
+                    <TableHead className="w-36">Updated</TableHead>
+                    <TableHead className="w-16 text-right">Archive</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -189,27 +346,42 @@ export default function AdminInquiries() {
                       className={`cursor-pointer ${selectedInquiryId === inquiry.id ? "bg-muted/50" : ""}`}
                       onClick={() => setSelectedInquiryId(inquiry.id)}
                     >
-                      <TableCell>
-                        <div>
-                          <p className="font-medium text-sm text-foreground">{inquiry.guest_name}</p>
-                          <p className="text-xs text-muted-foreground">{inquiry.guest_email}</p>
+                      <TableCell className="overflow-hidden">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-sm text-foreground">{inquiry.guest_name}</p>
+                          <p className="truncate text-xs text-muted-foreground">{inquiry.guest_email}</p>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium text-sm text-foreground">{inquiry.subject}</p>
-                          <p className="line-clamp-1 text-xs text-muted-foreground">{inquiry.last_message_preview}</p>
+                      <TableCell className="overflow-hidden">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-sm text-foreground">{inquiry.subject}</p>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="whitespace-nowrap">
                         <Badge className={statusClasses[inquiry.status] || statusClasses.open}>
                           {(inquiry.status || "open").replace(/_/g, " ")}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
+                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                         {inquiry.last_message_at
                           ? formatDistanceToNow(new Date(inquiry.last_message_at), { addSuffix: true })
                           : "just now"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="text-amber-600 hover:bg-amber-500/10 hover:text-amber-700"
+                          title="Archive inquiry"
+                          disabled={inquiry.status === "archived"}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setArchiveId(inquiry.id);
+                          }}
+                        >
+                          <Archive className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -254,7 +426,7 @@ export default function AdminInquiries() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {statusOptions.filter((option) => option.value !== "all").map((option) => (
+                          {statusOptions.map((option) => (
                             <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
                           ))}
                         </SelectContent>
@@ -271,17 +443,20 @@ export default function AdminInquiries() {
                   </div>
                 </div>
 
-                <div className="max-h-[460px] space-y-3 overflow-y-auto rounded-2xl border border-border/70 bg-muted/10 p-4">
+                <div ref={messagesContainerRef} className="h-[460px] space-y-3 overflow-y-auto rounded-2xl border border-border/70 bg-muted/10 p-4">
                   {(selectedThread?.messages || []).map((message) => {
-                    const isGuest = message.sender_type === "guest";
+                    const isOwnMessage =
+                      (message.sender_user_id && user?.id && message.sender_user_id === user.id) ||
+                      (message.sender_email && user?.email && message.sender_email.toLowerCase() === user.email.toLowerCase()) ||
+                      (!message.sender_user_id && !message.sender_email && message.sender_type === "admin");
 
                     return (
-                      <div key={message.id} className={`flex ${isGuest ? "justify-start" : "justify-end"}`}>
+                      <div key={message.id} className={`flex ${isOwnMessage ? "justify-end" : "justify-start"}`}>
                         <div
                           className={`max-w-[90%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
-                            isGuest
-                              ? "border border-border/70 bg-background text-foreground"
-                              : "bg-primary text-primary-foreground"
+                            isOwnMessage
+                              ? "bg-primary text-primary-foreground"
+                              : "border border-border/70 bg-background text-foreground"
                           }`}
                         >
                           <div className="flex items-center gap-2 text-xs opacity-80">
@@ -303,7 +478,7 @@ export default function AdminInquiries() {
                 <form className="space-y-3" onSubmit={handleSendReply}>
                   {isSelectedInquiryClosed ? (
                     <div className="rounded-2xl border border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                      This inquiry is closed. Messaging is disabled because the conversation is already done.
+                      This inquiry is {selectedInquiryStatus}. Messaging is disabled because the conversation is already done.
                     </div>
                   ) : null}
 
@@ -314,6 +489,7 @@ export default function AdminInquiries() {
                       rows={5}
                       value={replyMessage}
                       onChange={(event) => setReplyMessage(event.target.value)}
+                      onKeyDown={handleReplyKeyDown}
                       placeholder="Type your reply to the guest here."
                       disabled={isSelectedInquiryClosed || isReplying}
                     />
@@ -328,6 +504,23 @@ export default function AdminInquiries() {
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={!!archiveId} onOpenChange={(open) => !open && !isArchiving && setArchiveId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive Inquiry?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will move "{archiveInquiry?.subject || "this inquiry"}" out of the active inquiry list. You can still view it from the Archived filter.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isArchiving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleArchive} className="bg-amber-600 text-white hover:bg-amber-700" disabled={isArchiving}>
+              {isArchiving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Archive"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

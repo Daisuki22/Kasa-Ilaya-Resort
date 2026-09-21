@@ -4,7 +4,7 @@ import { fileURLToPath, URL } from 'node:url'
 
 const isProduction = process.env.NODE_ENV === 'production'
 const isVercel = process.env.VERCEL === '1'
-const basePath = process.env.VITE_BASE_PATH || (isProduction && !isVercel ? '/Kasa-Ilaya-Resort-Front-End/' : '/')
+const basePath = process.env.VITE_BASE_PATH || (isProduction && !isVercel ? '/Kasa-Ilaya-Resort/dist/' : '/')
 
 export default defineConfig({
   server: {

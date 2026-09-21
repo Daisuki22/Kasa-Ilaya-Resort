@@ -1,56 +1,34 @@
-import AdminActivityLogs from './pages/AdminActivityLogs.jsx';
-import Amenities from './pages/Amenities.jsx';
-import About from './pages/About.jsx';
-import AdminBookings from './pages/AdminBooking.jsx';
-import AdminCalendar from './pages/AdminCalendar.jsx';
-import Contact from './pages/Contact.jsx';
-import AdminDashboard from './pages/AdminDashboard.jsx';
-import AdminInquiries from './pages/AdminInquiries.jsx';
-import AdminPackages from './pages/AdminPackage.jsx';
-import AdminPackageArchive from './pages/AdminPackageArchive.jsx';
-import AdminPaymentQRCodes from './pages/AdminPaymentQRCodes.jsx';
-import AdminProfileSettings from './pages/AdminProfileSettings.jsx';
-import AdminSecuritySettings from './pages/AdminSecuritySettings.jsx';
-import AdminSystemSettings from './pages/AdminSystemSettings.jsx';
-import AdminUserPermissions from './pages/AdminUserPermissions.jsx';
-import BookingForm from './pages/BookingForm.jsx';
-import ForgotPassword from './pages/ForgotPassword.jsx';
-import VerifyRegistrationOtp from './pages/VerifyRegistrationOtp.jsx';
-import Home from './pages/Home.jsx';
-import Login from './pages/Login.jsx';
-import MyBookings from './pages/MyBooking.jsx';
-import Packages from './pages/Packages.jsx';
-import ProfileSettings from './pages/ProfileSettings.jsx';
-import ResetPassword from './pages/ResetPassword.jsx';
+import { lazy } from 'react';
 import __Layout from './Layout.jsx';
 
-
 export const PAGES = {
-    "AdminActivityLogs": AdminActivityLogs,
-    "Amenities": Amenities,
-    "About": About,
-    "AdminBookings": AdminBookings,
-    "AdminCalendar": AdminCalendar,
-    "Contact": Contact,
-    "AdminDashboard": AdminDashboard,
-    "AdminInquiries": AdminInquiries,
-    "AdminPackages": AdminPackages,
-    "AdminPackageArchive": AdminPackageArchive,
-    "AdminPaymentQRCodes": AdminPaymentQRCodes,
-    "AdminProfileSettings": AdminProfileSettings,
-    "AdminSecuritySettings": AdminSecuritySettings,
-    "AdminSystemSettings": AdminSystemSettings,
-    "AdminUserPermissions": AdminUserPermissions,
-    "BookingForm": BookingForm,
-    "ForgotPassword": ForgotPassword,
-    "VerifyRegistrationOtp": VerifyRegistrationOtp,
-    "Home": Home,
-    "Login": Login,
-    "MyBookings": MyBookings,
-    "Packages": Packages,
-    "ProfileSettings": ProfileSettings,
-    "ResetPassword": ResetPassword,
-}
+    "AdminActivityLogs": lazy(() => import('./pages/AdminActivityLogs.jsx')),
+    "Amenities": lazy(() => import('./pages/Amenities.jsx')),
+    "About": lazy(() => import('./pages/About.jsx')),
+    "AdminBookings": lazy(() => import('./pages/AdminBooking.jsx')),
+    "AdminCalendar": lazy(() => import('./pages/AdminCalendar.jsx')),
+    "Contact": lazy(() => import('./pages/Contact.jsx')),
+    "AdminDashboard": lazy(() => import('./pages/AdminDashboard.jsx')),
+    "AdminInquiries": lazy(() => import('./pages/AdminInquiries.jsx')),
+    "AdminPackages": lazy(() => import('./pages/AdminPackage.jsx')),
+    "AdminPackageArchive": lazy(() => import('./pages/AdminPackageArchive.jsx')),
+    "AdminPaymentQRCodes": lazy(() => import('./pages/AdminPaymentQRCodes.jsx')),
+    "AdminPaymentMonitoring": lazy(() => import('./pages/AdminPaymentMonitoring.jsx')),
+    "AdminProfileSettings": lazy(() => import('./pages/AdminProfileSettings.jsx')),
+    "AdminSecuritySettings": lazy(() => import('./pages/AdminSecuritySettings.jsx')),
+    "AdminSystemSettings": lazy(() => import('./pages/AdminSystemSettings.jsx')),
+    "AdminUserPermissions": lazy(() => import('./pages/AdminUserPermissions.jsx')),
+    "BookingForm": lazy(() => import('./pages/BookingForm.jsx')),
+    "ForgotPassword": lazy(() => import('./pages/ForgotPassword.jsx')),
+    "VerifyRegistrationOtp": lazy(() => import('./pages/VerifyRegistrationOtp.jsx')),
+    "Home": lazy(() => import('./pages/Home.jsx')),
+    "Login": lazy(() => import('./pages/Login.jsx')),
+    "MyBookings": lazy(() => import('./pages/MyBooking.jsx')),
+    "Packages": lazy(() => import('./pages/Packages.jsx')),
+    "ProfileSettings": lazy(() => import('./pages/ProfileSettings.jsx')),
+    "ResetPassword": lazy(() => import('./pages/ResetPassword.jsx')),
+    "AdminReport": lazy(() => import('./pages/AdminReport.jsx')),
+};
 
 export const pagesConfig = {
     mainPage: "Home",

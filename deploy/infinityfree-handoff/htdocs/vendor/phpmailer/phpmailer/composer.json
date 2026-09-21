@@ -1,0 +1,21 @@
+{
+  "name": "phpmailer/phpmailer",
+  "description": "PHPMailer is a full-featured email creation and transfer class for PHP",
+  "type": "library",
+  "license": "LGPL-2.1-only",
+  "autoload": {
+    "psr-4": {
+      "PHPMailer\\PHPMailer\\": "src/"
+    }
+  },
+  "require": {
+    "php": ">=5.5.0",
+    "ext-ctype": "*",
+    "ext-filter": "*",
+    "ext-hash": "*"
+  },
+  "suggest": {
+    "league/oauth2-google": "Needed for Google XOAUTH2 authentication",
+    "psr/log": "For optional PSR-3 debug logging"
+  }
+}

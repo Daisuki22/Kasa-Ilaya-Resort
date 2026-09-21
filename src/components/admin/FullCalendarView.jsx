@@ -4,23 +4,38 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { format, addDays } from "date-fns";
+import { addDays, format } from "date-fns";
 import { baseClient } from "@/api/baseClient";
 import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Plus, Trash2, PencilLine, CheckCircle2, CheckCheck } from "lucide-react";
+import { CalendarDays, CheckCheck, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 const SCHEDULE_COLOR = "#2563eb";
 const BOOKING_COLORS = {
   pending: "#f59e0b",
   confirmed: "#16a34a",
-  completed: "#6b7280",
+  completed: "#64748b",
   cancelled: "#ef4444",
+};
+const asArray = (value) => (Array.isArray(value) ? value : []);
+
+const statusBadgeClasses = {
+  pending: "border-amber-200 bg-amber-50 text-amber-700",
+  confirmed: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  completed: "border-slate-200 bg-slate-100 text-slate-700",
+  cancelled: "border-destructive/20 bg-destructive/10 text-destructive",
+};
+
+const tourLabels = {
+  day_tour: "Day Tour",
+  night_tour: "Night Tour",
+  "22_hours": "22 Hours",
 };
 
 const createEmptyForm = (date) => ({
@@ -32,11 +47,30 @@ const createEmptyForm = (date) => ({
   description: "",
 });
 
-export default function FullCalendarView() {
+const formatMoney = (value) => `PHP ${Number(value || 0).toLocaleString()}`;
+
+const formatDate = (value, pattern = "MMM d, yyyy") => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return format(date, pattern);
+};
+
+function BookingField({ label, children }) {
+  return (
+    <div className="rounded-lg border border-border bg-background p-3">
+      <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+      <div className="mt-1 min-w-0 break-words text-sm font-medium text-foreground">{children || "-"}</div>
+    </div>
+  );
+}
+
+export default function FullCalendarView({ embedded = false }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const calendarRef = useRef(null);
   const canManage = user?.role === "admin" || user?.role === "super_admin";
+  const shellClass = embedded ? "space-y-5" : "w-full max-w-none px-2 py-6 sm:px-3 lg:px-4";
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState(null);
@@ -54,10 +88,12 @@ export default function FullCalendarView() {
     const booking = viewingBooking;
     const nextPaymentStatus =
       newStatus === "confirmed" || newStatus === "completed" ? "paid" : booking?.payment_status || "unpaid";
+
     try {
       await baseClient.entities.Booking.update(bookingId, { status: newStatus, payment_status: nextPaymentStatus });
       await queryClient.invalidateQueries({ queryKey: ["calendar-bookings"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-all-bookings"] });
+      await queryClient.invalidateQueries({ queryKey: ["my-bookings"] });
       toast.success(`Booking marked as ${newStatus}.`);
       setViewingBooking(null);
       setDialogOpen(false);
@@ -83,58 +119,75 @@ export default function FullCalendarView() {
 
   const isLoading = isLoadingSchedules || isLoadingBookings;
 
-  // Convert schedules + bookings to FullCalendar events
   const calendarEvents = [
-    ...schedules.map((s) => ({
-      id: `schedule-${s.id}`,
-      title: s.title,
-      start: s.start_time
-        ? `${s.schedule_date}T${s.start_time}`
-        : s.schedule_date,
-      end: s.end_time ? `${s.schedule_date}T${s.end_time}` : undefined,
-      allDay: !s.start_time,
+    ...asArray(schedules).map((schedule) => ({
+      id: `schedule-${schedule.id}`,
+      title: schedule.title,
+      start: schedule.start_time
+        ? `${schedule.schedule_date}T${schedule.start_time}`
+        : schedule.schedule_date,
+      end: schedule.end_time ? `${schedule.schedule_date}T${schedule.end_time}` : undefined,
+      allDay: !schedule.start_time,
       backgroundColor: SCHEDULE_COLOR,
       borderColor: SCHEDULE_COLOR,
-      extendedProps: { type: "schedule", raw: s },
+      extendedProps: { type: "schedule", raw: schedule },
     })),
-    ...bookings.flatMap((b) => {
-      const color = BOOKING_COLORS[b.status] || BOOKING_COLORS.pending;
+    ...asArray(bookings).flatMap((booking) => {
+      const color = BOOKING_COLORS[booking.status] || BOOKING_COLORS.pending;
       const base = {
-        id: `booking-${b.id}`,
-        title: b.package_name || "Booking",
+        id: `booking-${booking.id}`,
+        title: booking.package_name || "Booking",
         backgroundColor: color,
         borderColor: color,
-        extendedProps: { type: "booking", raw: b },
+        extendedProps: { type: "booking", raw: booking },
       };
-      if (b.tour_type === "22_hours") {
+
+      if (booking.tour_type === "22_hours") {
         return [{
           ...base,
-          start: b.booking_date,
-          end: format(addDays(new Date(`${b.booking_date}T00:00:00`), 2), "yyyy-MM-dd"),
+          start: booking.booking_date,
+          end: format(addDays(new Date(`${booking.booking_date}T00:00:00`), 2), "yyyy-MM-dd"),
           allDay: true,
         }];
       }
-      return [{ ...base, start: b.booking_date, allDay: true }];
+
+      return [{ ...base, start: booking.booking_date, allDay: true }];
     }),
   ];
 
+  const openScheduleDialog = (date = new Date()) => {
+    setEditingSchedule(null);
+    setViewingBooking(null);
+    setForm(createEmptyForm(date));
+    setDialogOpen(true);
+  };
+
   const handleDateClick = (info) => {
     if (!canManage) return;
-    setEditingSchedule(null);
-    setForm(createEmptyForm(new Date(info.dateStr)));
-    setViewingBooking(null);
-    setDialogOpen(true);
+    const clickedDate = new Date(info.dateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (clickedDate < today) {
+      toast.error("You cannot add a schedule on a past date.");
+      return;
+    }
+
+    openScheduleDialog(clickedDate);
   };
 
   const handleEventClick = (info) => {
     const { type, raw } = info.event.extendedProps;
+
     if (type === "booking") {
       setViewingBooking(raw);
-      setDialogOpen(true);
       setEditingSchedule(null);
+      setDialogOpen(true);
       return;
     }
+
     if (!canManage) return;
+
     setViewingBooking(null);
     setEditingSchedule(raw);
     setForm({
@@ -150,10 +203,21 @@ export default function FullCalendarView() {
 
   const handleSubmit = async () => {
     if (!canManage) return;
+
     if (!form.title.trim() || !form.schedule_date) {
       toast.error("Title and date are required.");
       return;
     }
+
+    const selectedDate = new Date(form.schedule_date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (selectedDate < today) {
+      toast.error("You cannot add a schedule on a past date.");
+      return;
+    }
+
     setIsSaving(true);
     try {
       const payload = {
@@ -204,6 +268,7 @@ export default function FullCalendarView() {
   const handleDelete = async () => {
     if (!canManage || !editingSchedule) return;
     if (!window.confirm(`Delete "${editingSchedule.title}"?`)) return;
+
     setDeletingId(editingSchedule.id);
     try {
       await baseClient.entities.UpcomingSchedule.delete(editingSchedule.id);
@@ -227,86 +292,100 @@ export default function FullCalendarView() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-display text-3xl font-bold text-foreground">Manage Events</h1>
-          <p className="text-muted-foreground mt-1">View and manage resort schedules and reservations.</p>
+    <div className={shellClass}>
+      <section className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-display text-2xl font-bold text-foreground">Reservation Calendar</h2>
+            <p className="mt-1 text-sm text-muted-foreground">See guest reservations and manual resort schedules in one calendar.</p>
+          </div>
+          {canManage && (
+            <Button className="gap-2 self-start sm:self-auto" onClick={() => openScheduleDialog()}>
+              <Plus className="h-4 w-4" />
+              Add Schedule
+            </Button>
+          )}
         </div>
-        {canManage && (
-          <Button
-            className="gap-2 self-start sm:self-auto"
-            onClick={() => {
-              setEditingSchedule(null);
-              setViewingBooking(null);
-              setForm(createEmptyForm(new Date()));
-              setDialogOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            Add Schedule
-          </Button>
+
+        <div className="flex flex-wrap gap-4 border-b border-border bg-muted/30 px-5 py-3 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: SCHEDULE_COLOR }} />
+            Manual Schedule
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: BOOKING_COLORS.pending }} />
+            Pending Booking
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: BOOKING_COLORS.confirmed }} />
+            Confirmed Booking
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: BOOKING_COLORS.completed }} />
+            Completed Booking
+          </span>
+        </div>
+
+        {isLoading ? (
+          <div className="flex justify-center py-20">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="p-4 sm:p-5">
+            <div className="fc-wrapper overflow-hidden rounded-lg border border-border bg-background p-3 sm:p-4">
+              <FullCalendar
+                ref={calendarRef}
+                plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+                initialView="dayGridMonth"
+                headerToolbar={{
+                  left: "prev,next today",
+                  center: "title",
+                  right: "dayGridMonth,timeGridWeek,timeGridDay",
+                }}
+                buttonText={{
+                  today: "today",
+                  month: "month",
+                  week: "week",
+                  day: "day",
+                }}
+                events={calendarEvents}
+                dateClick={handleDateClick}
+                eventClick={handleEventClick}
+                editable={false}
+                selectable={canManage}
+                dayMaxEvents={3}
+                height="auto"
+                eventDisplay="block"
+                dayCellContent={function(arg) {
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const cellDate = new Date(arg.date);
+                  cellDate.setHours(0, 0, 0, 0);
+
+                  if (cellDate < today) {
+                    return (
+                      <div style={{ position: "relative", width: "100%", height: "100%" }}>
+                        <span style={{ color: "#ef4444", fontWeight: "bold", position: "absolute", top: 2, right: 4, fontSize: "1.2em", pointerEvents: "none" }}>x</span>
+                        <span>{arg.dayNumberText}</span>
+                      </div>
+                    );
+                  }
+
+                  return arg.dayNumberText;
+                }}
+              />
+            </div>
+          </div>
         )}
-      </div>
+      </section>
 
-      {/* Legend */}
-      <div className="mb-4 flex flex-wrap gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: SCHEDULE_COLOR }} />
-          Manual Schedule
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: BOOKING_COLORS.pending }} />
-          Pending Booking
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: BOOKING_COLORS.confirmed }} />
-          Confirmed Booking
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: BOOKING_COLORS.completed }} />
-          Completed Booking
-        </span>
-      </div>
-
-      {isLoading ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-border bg-card p-4 sm:p-6 shadow-sm fc-wrapper">
-          <FullCalendar
-            ref={calendarRef}
-            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-            initialView="dayGridMonth"
-            headerToolbar={{
-              left: "prev,next today",
-              center: "title",
-              right: "dayGridMonth,timeGridWeek,timeGridDay",
-            }}
-            buttonText={{
-              today: "today",
-              month: "month",
-              week: "week",
-              day: "day",
-            }}
-            events={calendarEvents}
-            dateClick={handleDateClick}
-            eventClick={handleEventClick}
-            editable={false}
-            selectable={canManage}
-            dayMaxEvents={3}
-            height="auto"
-            eventDisplay="block"
-          />
-        </div>
-      )}
-
-      {/* Schedule create/edit dialog */}
       <Dialog
         open={dialogOpen && !viewingBooking}
         onOpenChange={(open) => {
-          if (!open) { setDialogOpen(false); setViewingBooking(null); }
+          if (!open) {
+            setDialogOpen(false);
+            setViewingBooking(null);
+          }
         }}
       >
         <DialogContent className="sm:max-w-md">
@@ -322,7 +401,7 @@ export default function FullCalendarView() {
               <Input
                 id="fc-title"
                 value={form.title}
-                onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
+                onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
                 placeholder="Event title"
               />
             </div>
@@ -332,7 +411,7 @@ export default function FullCalendarView() {
                 id="fc-date"
                 type="date"
                 value={form.schedule_date}
-                onChange={(e) => setForm((p) => ({ ...p, schedule_date: e.target.value }))}
+                onChange={(event) => setForm((current) => ({ ...current, schedule_date: event.target.value }))}
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -342,7 +421,7 @@ export default function FullCalendarView() {
                   id="fc-start"
                   type="time"
                   value={form.start_time}
-                  onChange={(e) => setForm((p) => ({ ...p, start_time: e.target.value }))}
+                  onChange={(event) => setForm((current) => ({ ...current, start_time: event.target.value }))}
                 />
               </div>
               <div>
@@ -351,7 +430,7 @@ export default function FullCalendarView() {
                   id="fc-end"
                   type="time"
                   value={form.end_time}
-                  onChange={(e) => setForm((p) => ({ ...p, end_time: e.target.value }))}
+                  onChange={(event) => setForm((current) => ({ ...current, end_time: event.target.value }))}
                 />
               </div>
             </div>
@@ -360,7 +439,7 @@ export default function FullCalendarView() {
               <Input
                 id="fc-location"
                 value={form.location}
-                onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))}
+                onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))}
                 placeholder="Optional"
               />
             </div>
@@ -370,7 +449,7 @@ export default function FullCalendarView() {
                 id="fc-desc"
                 rows={3}
                 value={form.description}
-                onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+                onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
               />
             </div>
           </div>
@@ -399,63 +478,53 @@ export default function FullCalendarView() {
         </DialogContent>
       </Dialog>
 
-      {/* Booking detail dialog (read-only) */}
       <Dialog
         open={dialogOpen && !!viewingBooking}
-        onOpenChange={(open) => { if (!open) { setDialogOpen(false); setViewingBooking(null); } }}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDialogOpen(false);
+            setViewingBooking(null);
+          }
+        }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-2xl overflow-y-auto sm:max-h-[90vh]">
           <DialogHeader>
-            <DialogTitle className="font-display text-xl">Booking Details</DialogTitle>
+            <DialogTitle className="font-display text-xl">Calendar Reservation</DialogTitle>
           </DialogHeader>
           {viewingBooking && (
-            <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <p className="text-muted-foreground">Package</p>
-                  <p className="font-medium">{viewingBooking.package_name || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Status</p>
-                  <p className="font-medium capitalize">{viewingBooking.status}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Check-in</p>
-                  <p className="font-medium">{viewingBooking.booking_date}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Tour Type</p>
-                  <p className="font-medium capitalize">{(viewingBooking.tour_type || "").replace(/_/g, " ")}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Customer</p>
-                  <p className="font-medium">{viewingBooking.customer_name || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Guests</p>
-                  <p className="font-medium">{viewingBooking.guest_count || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Email</p>
-                  <p className="font-medium">{viewingBooking.customer_email || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Phone</p>
-                  <p className="font-medium">{viewingBooking.customer_phone || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Total</p>
-                  <p className="font-semibold">{viewingBooking.total_amount ? `₱${Number(viewingBooking.total_amount).toLocaleString()}` : "—"}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Reference</p>
-                  <p className="font-mono text-xs">{viewingBooking.booking_reference || "—"}</p>
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border bg-muted/40 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="font-mono text-xs font-semibold text-primary">{viewingBooking.booking_reference || "-"}</p>
+                    <h3 className="mt-1 text-lg font-bold text-foreground">{viewingBooking.package_name || "Selected package"}</h3>
+                    <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <CalendarDays className="h-4 w-4" />
+                      {formatDate(viewingBooking.booking_date)}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className={statusBadgeClasses[viewingBooking.status] || statusBadgeClasses.pending}>
+                    {(viewingBooking.status || "pending").replace(/_/g, " ")}
+                  </Badge>
                 </div>
               </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <BookingField label="Tour Type">{tourLabels[viewingBooking.tour_type] || viewingBooking.tour_type}</BookingField>
+                <BookingField label="Customer">{viewingBooking.customer_name || "Guest"}</BookingField>
+                <BookingField label="Guests">{viewingBooking.guest_count || 0}</BookingField>
+                <BookingField label="Total">{formatMoney(viewingBooking.total_amount)}</BookingField>
+                <BookingField label="Email">
+                  <span className="break-all">{viewingBooking.customer_email || "-"}</span>
+                </BookingField>
+                <BookingField label="Phone">{viewingBooking.customer_phone || "-"}</BookingField>
+              </div>
+
               {viewingBooking.status === "pending" && canManage && (
-                <div className="space-y-3 pt-2">
-                  <Button size="sm" className="w-full gap-1" onClick={() => updateBookingStatus(viewingBooking.id, "confirmed")}>
-                    <CheckCircle2 className="h-4 w-4" /> Confirm
+                <div className="space-y-3 border-t border-border pt-3">
+                  <Button size="sm" className="w-full gap-2" onClick={() => updateBookingStatus(viewingBooking.id, "confirmed")}>
+                    <CheckCircle2 className="h-4 w-4" />
+                    Confirm Reservation
                   </Button>
                   <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
                     Owner and staff cannot cancel bookings. Guests may only cancel their own pending bookings before they are marked paid or approved.
@@ -463,9 +532,10 @@ export default function FullCalendarView() {
                 </div>
               )}
               {viewingBooking.status === "confirmed" && canManage && (
-                <div className="pt-2">
-                  <Button size="sm" className="w-full gap-1" onClick={() => updateBookingStatus(viewingBooking.id, "completed")}>
-                    <CheckCheck className="h-4 w-4" /> Mark as Completed
+                <div className="border-t border-border pt-3">
+                  <Button size="sm" className="w-full gap-2" onClick={() => updateBookingStatus(viewingBooking.id, "completed")}>
+                    <CheckCheck className="h-4 w-4" />
+                    Mark as Completed
                   </Button>
                 </div>
               )}

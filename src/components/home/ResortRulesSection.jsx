@@ -7,7 +7,7 @@ export default function ResortRulesSection() {
 
   return (
     <section className="bg-background py-24 sm:py-28 lg:py-32">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">
+      <div className="w-full max-w-none px-2 sm:px-3 lg:px-4">
         <div className="mb-16 text-center lg:mb-20">
           <span className="text-secondary font-medium text-sm tracking-wider uppercase">Guest Guide</span>
           <h2 className="mt-3 font-display text-3xl font-bold text-foreground sm:text-4xl lg:text-5xl">
@@ -20,8 +20,8 @@ export default function ResortRulesSection() {
 
         <div className="grid grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-3 lg:gap-10">
           {rules.map((rule) => (
-            <div key={rule.title} className="rounded-2xl border border-border bg-card p-8 shadow-sm">
-              <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
+            <div key={rule.title} className="rounded-lg border border-border bg-card p-6 shadow-sm sm:p-8">
+              <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-lg bg-primary/10">
                 <ShieldCheck className="h-6 w-6 text-primary" />
               </div>
               <h3 className="mb-3 text-lg font-semibold text-foreground">{rule.title}</h3>

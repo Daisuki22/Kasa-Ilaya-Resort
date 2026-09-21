@@ -19,16 +19,16 @@ export default function CTASection() {
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute left-4 top-6 flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border border-primary-foreground/20 bg-primary-foreground/5 sm:left-8 sm:top-8 sm:h-40 sm:w-40 lg:left-10 lg:top-10 lg:h-64 lg:w-64 lg:border-2">
           {circleImage ? (
-            <img src={circleImage} alt="" className="h-full w-full object-cover opacity-30" />
+            <img src={circleImage} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover opacity-30" />
           ) : null}
         </div>
         <div className="absolute bottom-6 right-4 flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-primary-foreground/20 bg-primary-foreground/5 sm:bottom-8 sm:right-8 sm:h-32 sm:w-32 lg:bottom-10 lg:right-10 lg:h-48 lg:w-48 lg:border-2">
           {circleImage ? (
-            <img src={circleImage} alt="" className="h-full w-full object-cover opacity-20" />
+            <img src={circleImage} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover opacity-20" />
           ) : null}
         </div>
       </div>
-      <div className="relative mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-10">
+      <div className="relative w-full max-w-none px-2 text-center sm:px-3 lg:px-4">
         <h2 className="mb-5 font-display text-3xl font-bold text-primary-foreground sm:text-4xl lg:text-5xl">
           Ready to Book Your Stay?
         </h2>

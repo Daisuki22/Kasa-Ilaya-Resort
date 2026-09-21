@@ -1,9 +1,9 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 
-export const Table = React.forwardRef(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
-    <table ref={ref} className={cn('w-full caption-bottom text-sm', className)} {...props} />
+export const Table = React.forwardRef(({ className, containerClassName, ...props }, ref) => (
+  <div className={cn('relative w-full max-w-full overflow-x-auto', containerClassName)}>
+    <table ref={ref} className={cn('w-full min-w-max caption-bottom text-sm', className)} {...props} />
   </div>
 ));
 
@@ -24,11 +24,11 @@ export const TableRow = React.forwardRef(({ className, ...props }, ref) => (
 ));
 
 export const TableHead = React.forwardRef(({ className, ...props }, ref) => (
-  <th ref={ref} className={cn('h-12 px-4 text-left align-middle font-medium text-muted-foreground', className)} {...props} />
+  <th ref={ref} className={cn('h-12 whitespace-nowrap px-3 text-left align-middle font-medium text-muted-foreground sm:px-4', className)} {...props} />
 ));
 
 export const TableCell = React.forwardRef(({ className, ...props }, ref) => (
-  <td ref={ref} className={cn('p-4 align-middle', className)} {...props} />
+  <td ref={ref} className={cn('p-3 align-middle sm:p-4', className)} {...props} />
 ));
 
 export const TableCaption = React.forwardRef(({ className, ...props }, ref) => (

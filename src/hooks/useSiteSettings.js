@@ -91,8 +91,8 @@ const DEFAULT_RESORT_GALLERY = [
   },
 ];
 
-const DEFAULT_HERO_IMAGES = ["img/Logo.png"];
-const DEFAULT_PACKAGES_BANNER_IMAGES = ["img/Logo.png"];
+const DEFAULT_HERO_IMAGES = ["/img/Logo.png"];
+const DEFAULT_PACKAGES_BANNER_IMAGES = ["/img/Logo.png"];
 
 const normalizeJsonField = (value, fallback) => {
   if (Array.isArray(value)) {
@@ -113,10 +113,10 @@ const normalizeJsonField = (value, fallback) => {
 
 export const defaultSiteSettings = {
   site_name: "Kasa Ilaya",
-  logo_url: "",
-  hero_image_url: "img/Logo.png",
+  logo_url: "/img/apple-touch-icon.png",
+  hero_image_url: "/img/Logo2~no.png",
   hero_images: DEFAULT_HERO_IMAGES,
-  packages_banner_url: "img/Logo.png",
+  packages_banner_url: "/img/Logo.png",
   packages_banner_images: DEFAULT_PACKAGES_BANNER_IMAGES,
   hero_badge_text: "Welcome to Paradise",
   hero_title_line1: "Kasa Ilaya",
@@ -130,17 +130,18 @@ export const defaultSiteSettings = {
   amenities_section_description: "Enjoy world-class amenities designed for your comfort and pleasure",
   resort_gallery: DEFAULT_RESORT_GALLERY,
   terms_title: "Terms and Conditions",
-  terms_summary: "Please review the booking, payment, no-refund, and cancellation rules before confirming your reservation.",
+  terms_summary: "Please review the booking, payment, rebooking, no-refund, and cancellation rules before confirming your reservation.",
   terms_content:
     "1. All bookings are subject to availability and confirmation by Kasa Ilaya Resort.\n\n" +
     "2. Guests must provide accurate personal information and valid contact details during reservation.\n\n" +
     "3. A reservation payment is required to process the booking. Submitted payment proofs are reviewed before final confirmation.\n\n" +
     "4. Reservation fees and payments made to secure a booking are non-refundable unless Kasa Ilaya Resort approves otherwise in writing.\n\n" +
-    "5. Guests may cancel their own booking while it is still pending, but online cancellation is no longer allowed once the booking is marked paid or approved by the resort.\n\n" +
-    "6. Guests must follow resort rules, safety guidelines, staff instructions, and capacity limits throughout their stay.\n\n" +
-    "7. Damages to resort property, missing items, or violations of house rules may result in additional charges or cancellation of the reservation.\n\n" +
-    "8. Kasa Ilaya Resort may decline or cancel a booking for policy violations, fraudulent transactions, safety concerns, or force majeure events.\n\n" +
-    "9. By proceeding with a reservation, the guest confirms that they have read and accepted these terms and conditions.",
+    "5. One approved rebooking is allowed per reservation. Rebooking requests must be submitted at least 7 days before the reservation date, the requested date must be available for the same package and tour type, and the original booking date remains active until admin approval.\n\n" +
+    "6. Guests may cancel their own booking while it is still pending, but online cancellation is no longer allowed once the booking is marked paid or approved by the resort.\n\n" +
+    "7. Guests must follow resort rules, safety guidelines, staff instructions, and capacity limits throughout their stay.\n\n" +
+    "8. Damages to resort property, missing items, or violations of house rules may result in additional charges or cancellation of the reservation.\n\n" +
+    "9. Kasa Ilaya Resort may decline or cancel a booking for policy violations, fraudulent transactions, safety concerns, or force majeure events.\n\n" +
+    "10. By proceeding with a reservation, the guest confirms that they have read and accepted these terms and conditions.",
   amenities: DEFAULT_AMENITIES,
   require_strong_password: true,
   min_password_length: 8,
@@ -174,6 +175,7 @@ export function useSiteSettings() {
     return {
       ...defaultSiteSettings,
       ...(latest || {}),
+      logo_url: latest?.logo_url?.trim() || defaultSiteSettings.logo_url,
       amenities,
       hero_image_url: normalizedHeroImages[0] || defaultSiteSettings.hero_image_url,
       hero_images: normalizedHeroImages.length > 0 ? normalizedHeroImages : DEFAULT_HERO_IMAGES,

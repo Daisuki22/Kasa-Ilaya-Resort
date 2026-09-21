@@ -1,6 +1,44 @@
+import { resolveAssetUrlsDeep } from "@/lib/assetUrls";
+
 const createId = (prefix) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '/api' : '/Kasa-Ilaya-Resort/api');
+const WELCOME_INTRO_SESSION_KEY = 'ki-welcome-intro-shown';
+const THEME_STORAGE_KEY = 'kasa-ilaya-theme';
+
+const clearClientAuthState = () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const preservedSession = new Map();
+  const preservedLocal = new Map();
+
+  try {
+    const welcomeIntroShown = window.sessionStorage.getItem(WELCOME_INTRO_SESSION_KEY);
+    if (welcomeIntroShown !== null) {
+      preservedSession.set(WELCOME_INTRO_SESSION_KEY, welcomeIntroShown);
+    }
+  } catch {}
+
+  try {
+    const theme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (theme !== null) {
+      preservedLocal.set(THEME_STORAGE_KEY, theme);
+    }
+  } catch {}
+
+  try { window.sessionStorage.clear(); } catch {}
+  try { window.localStorage.clear(); } catch {}
+
+  preservedSession.forEach((value, key) => {
+    try { window.sessionStorage.setItem(key, value); } catch {}
+  });
+
+  preservedLocal.forEach((value, key) => {
+    try { window.localStorage.setItem(key, value); } catch {}
+  });
+};
 
 const dispatchAuthChange = () => {
   if (typeof window !== 'undefined') {
@@ -20,8 +58,9 @@ const buildLoginUrl = (nextUrl) => {
 };
 
 const request = async (path, options = {}) => {
-  const headers = { ...(options.headers || {}) };
-  let body = options.body;
+  const { suppressAuthEvent = false, ...fetchOptions } = options;
+  const headers = { ...(fetchOptions.headers || {}) };
+  let body = fetchOptions.body;
 
   if (body && !(body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
@@ -30,21 +69,50 @@ const request = async (path, options = {}) => {
 
   const response = await fetch(buildApiUrl(path), {
     credentials: 'include',
-    ...options,
+    ...fetchOptions,
     headers,
     body,
   });
 
   const contentType = response.headers.get('content-type') || '';
-  const payload = contentType.includes('application/json') ? await response.json() : await response.text();
+  const responseText = await response.text();
+  let payload = responseText;
 
-  if (!response.ok) {
-    const message = typeof payload === 'string' ? payload : payload?.error || 'Request failed.';
-    throw new Error(message);
+  if (contentType.includes('application/json') || /^[\[{]/.test(responseText.trim())) {
+    try {
+      payload = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      payload = {
+        error: response.ok
+          ? 'Server returned an invalid response.'
+          : responseText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() || 'Request failed.',
+      };
+    }
   }
 
-  return payload;
+  if (!response.ok) {
+    const rawMessage = typeof payload === 'string' ? payload : payload?.error || 'Request failed.';
+    const message = /SQLSTATE\[HY000\]\s*\[2002\]|target machine actively refused/i.test(rawMessage)
+      ? 'Database connection is unavailable. Please start MySQL in XAMPP and try again.'
+      : rawMessage;
+    const error = new Error(message);
+    if (payload && typeof payload === 'object') {
+      Object.assign(error, payload);
+      error.error = message;
+    }
+    if (response.status === 401) {
+      clearClientAuthState();
+      if (!suppressAuthEvent) {
+        dispatchAuthChange();
+      }
+    }
+    throw error;
+  }
+
+  return resolveAssetUrlsDeep(payload);
 };
+
+const asArray = (value) => (Array.isArray(value) ? value : []);
 
 const createBookingReference = () => {
   const now = new Date();
@@ -70,21 +138,6 @@ const withEntityDefaults = (entityName, payload) => {
     };
   }
 
-  if (entityName === 'FoundItem') {
-    return {
-      status: payload.status || 'unclaimed',
-      is_active: payload.is_active ?? true,
-      ...payload,
-    };
-  }
-
-  if (entityName === 'LostItemReport') {
-    return {
-      status: payload.status || 'searching',
-      ...payload,
-    };
-  }
-
   return payload;
 };
 
@@ -97,7 +150,7 @@ const createEntityHandler = (entityName) => ({
     if (typeof limit === 'number') {
       params.set('limit', String(limit));
     }
-    return request(`/entities.php?${params.toString()}`);
+    return asArray(await request(`/entities.php?${params.toString()}`));
   },
   async filter(query = {}, sortField, limit) {
     const params = new URLSearchParams({ entity: entityName, filter: JSON.stringify(query) });
@@ -107,7 +160,7 @@ const createEntityHandler = (entityName) => ({
     if (typeof limit === 'number') {
       params.set('limit', String(limit));
     }
-    return request(`/entities.php?${params.toString()}`);
+    return asArray(await request(`/entities.php?${params.toString()}`));
   },
   async create(data) {
     return request(`/entities.php?entity=${encodeURIComponent(entityName)}`, {
@@ -134,7 +187,7 @@ const createEntityHandler = (entityName) => ({
 export const baseClient = {
   auth: {
     async me() {
-      return request('/auth.php?action=me');
+      return request('/auth.php?action=me', { suppressAuthEvent: true });
     },
     async login(data) {
       const payload = await request('/auth.php?action=login', {
@@ -146,6 +199,23 @@ export const baseClient = {
     },
     async getGoogleConfig() {
       return request('/auth.php?action=google-config');
+    },
+    async getCaptchaChallenge(purpose) {
+      return request(`/auth.php?action=captcha-challenge&purpose=${encodeURIComponent(purpose)}`);
+    },
+    async verifyCaptcha(data) {
+      return request('/auth.php?action=verify-captcha', {
+        method: 'POST',
+        body: data,
+      });
+    },
+    async completeLoginCaptcha(data) {
+      const payload = await request('/auth.php?action=complete-login-captcha', {
+        method: 'POST',
+        body: data,
+      });
+      dispatchAuthChange();
+      return payload;
     },
     async googleLogin(data) {
       const payload = await request('/auth.php?action=google-login', {
@@ -183,6 +253,12 @@ export const baseClient = {
         body: data,
       });
     },
+    async resendResetOtp(data) {
+      return request('/auth.php?action=resend-reset-otp', {
+        method: 'POST',
+        body: data,
+      });
+    },
     async sendRegistrationOtp(data) {
       return request('/auth.php?action=send-registration-otp', {
         method: 'POST',
@@ -198,6 +274,12 @@ export const baseClient = {
     async validateResetToken(token) {
       return request(`/auth.php?action=validate-reset-token&token=${encodeURIComponent(token)}`);
     },
+    async validateResetCode(data) {
+      return request('/auth.php?action=validate-reset-code', {
+        method: 'POST',
+        body: data,
+      });
+    },
     async resetPassword(data) {
       return request('/auth.php?action=reset-password', {
         method: 'POST',
@@ -210,23 +292,33 @@ export const baseClient = {
       }
       return Promise.resolve(null);
     },
-    logout(redirectUrl = '/') {
+    async logout(redirectUrl = '/') {
+      clearClientAuthState();
+      dispatchAuthChange();
+
+      try {
+        await request('/auth.php?action=logout', {
+          method: 'POST',
+          body: { redirect_url: redirectUrl },
+        });
+      } catch {
+        // The browser state is already cleared. If the server session is already
+        // gone or the request fails, still send the guest to a clean page.
+      }
+
+      clearClientAuthState();
+      dispatchAuthChange();
+
+      if (typeof window !== 'undefined') {
+        window.location.replace(redirectUrl || '/');
+      }
+
+      return { success: true, redirect_url: redirectUrl || '/' };
+    },
+    logoutServerOnly(redirectUrl = '/') {
       return request('/auth.php?action=logout', {
         method: 'POST',
         body: { redirect_url: redirectUrl },
-      }).then((payload) => {
-        // Clear client-side storage that may hold cached UI state, then notify app
-        try {
-          if (typeof window !== 'undefined') {
-            try { window.sessionStorage.clear(); } catch (e) {}
-            try { window.localStorage.clear(); } catch (e) {}
-          }
-        } catch (e) {}
-
-        dispatchAuthChange();
-        if (typeof window !== 'undefined' && payload?.redirect_url) {
-          window.location.href = payload.redirect_url;
-        }
       });
     },
   },
@@ -236,13 +328,13 @@ export const baseClient = {
       if (status) {
         params.set('status', status);
       }
-      return request(`/inquiries.php?${params.toString()}`);
+      return asArray(await request(`/inquiries.php?${params.toString()}`));
     },
     async mine(tokens = []) {
-      return request('/inquiries.php?action=mine', {
+      return asArray(await request('/inquiries.php?action=mine', {
         method: 'POST',
         body: { tokens },
-      });
+      }));
     },
     async create(data) {
       return request('/inquiries.php?action=create', {
@@ -268,6 +360,11 @@ export const baseClient = {
         body: { status },
       });
     },
+    async archive(id) {
+      return request(`/inquiries.php?action=archive&id=${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+      });
+    },
   },
   entities: {
     ActivityLog: createEntityHandler('ActivityLog'),
@@ -281,12 +378,16 @@ export const baseClient = {
     UpcomingSchedule: createEntityHandler('UpcomingSchedule'),
     User: createEntityHandler('User'),
     Review: createEntityHandler('Review'),
+    Payment: createEntityHandler('Payment'),
   },
   integrations: {
     Core: {
-      async UploadFile({ file }) {
+      async UploadFile({ file, purpose }) {
         const formData = new FormData();
         formData.append('file', file);
+        if (purpose) {
+          formData.append('purpose', purpose);
+        }
         return request('/integrations.php?action=upload-file', {
           method: 'POST',
           body: formData,

@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
 import { CalendarCheck, Package, ArrowRight, PlayCircle, ChevronLeft, ChevronRight } from "lucide-react";
-import { motion } from "framer-motion";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
 import { useAuth } from "@/lib/AuthContext";
 
@@ -18,7 +17,7 @@ export default function HeroSection() {
       return images;
     }
 
-    return [settings?.hero_image_url || "img/Logo.png"];
+    return [settings?.hero_image_url || "/img/Logo.png"];
   }, [settings?.hero_images, settings?.hero_image_url]);
   const [activeHeroIndex, setActiveHeroIndex] = useState(0);
   const badgeText = settings?.hero_badge_text || "Welcome to Paradise";
@@ -31,6 +30,7 @@ export default function HeroSection() {
   const loginToPackagesUrl = `${createPageUrl("Login")}?next=${encodeURIComponent(packagesPageUrl)}`;
 
   const showSliderControls = heroImages.length > 1;
+  const activeHeroImage = heroImages[activeHeroIndex] || heroImages[0];
 
   const goToHeroSlide = (index) => {
     setActiveHeroIndex(index);
@@ -55,7 +55,7 @@ export default function HeroSection() {
 
     const intervalId = window.setInterval(() => {
       setActiveHeroIndex((current) => (current + 1) % heroImages.length);
-    }, 5000);
+    }, 12000);
 
     return () => window.clearInterval(intervalId);
   }, [heroImages.length]);
@@ -64,19 +64,15 @@ export default function HeroSection() {
     <section id="top" className="relative flex min-h-[82vh] items-center overflow-hidden sm:min-h-[88vh] lg:min-h-[92vh]">
       {/* Background image */}
       <div className="absolute inset-0">
-        <div
-          className="flex h-full w-full transition-transform duration-700 ease-in-out"
-          style={{ transform: `translateX(-${activeHeroIndex * 100}%)` }}
-        >
-          {heroImages.map((imageUrl, index) => (
-            <img
-              key={`${imageUrl}-${index}`}
-              src={imageUrl}
-              alt={`Resort ${index + 1}`}
-              className="h-full w-full flex-none object-cover"
-            />
-          ))}
-        </div>
+        <img
+          key={`${activeHeroImage}-${activeHeroIndex}`}
+          src={activeHeroImage}
+          alt={`Kasa Ilaya Resort and Event Place view ${activeHeroIndex + 1}`}
+          loading={activeHeroIndex === 0 ? "eager" : "lazy"}
+          decoding="async"
+          fetchPriority={activeHeroIndex === 0 ? "high" : "auto"}
+          className="h-full w-full object-cover"
+        />
         <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/45 to-transparent" />
 
         {showSliderControls ? (
@@ -112,21 +108,16 @@ export default function HeroSection() {
         ) : null}
       </div>
 
-      <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-28 lg:px-10 lg:py-36">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="max-w-3xl"
-        >
+      <div className="relative w-full max-w-none px-2 py-24 sm:px-3 sm:py-28 lg:px-4 lg:py-36">
+        <div className="w-full max-w-56 animate-in fade-in slide-in-from-bottom-6 duration-700 min-[390px]:max-w-64 sm:max-w-3xl">
           <span className="mb-6 inline-block rounded-full border border-secondary/30 bg-secondary/20 px-4 py-2 text-xs font-medium text-secondary backdrop-blur-sm sm:mb-8 sm:px-5 sm:text-sm">
             {badgeText}
           </span>
-          <h1 className="mb-6 font-display text-3xl font-bold leading-tight text-white sm:mb-8 sm:text-5xl lg:text-7xl">
-            {titleLine1}
-            <span className="block text-secondary">{titleLine2}</span>
+          <h1 className="mb-6 max-w-full break-words font-display text-2xl font-bold leading-tight text-white min-[390px]:text-[1.7rem] sm:mb-8 sm:text-5xl lg:text-7xl">
+            <span className="block">{titleLine1}</span>
+            <span className="block max-w-56 whitespace-normal text-secondary min-[390px]:max-w-64 sm:max-w-none">{titleLine2}</span>
           </h1>
-          <p className="mb-8 max-w-2xl text-base leading-7 text-white/80 sm:mb-10 sm:text-lg sm:leading-8 lg:text-xl">
+          <p className="mb-8 max-w-56 text-sm leading-7 text-white/80 min-[390px]:max-w-64 min-[390px]:text-base sm:mb-10 sm:max-w-2xl sm:text-lg sm:leading-8 lg:text-xl">
             {heroDescription}
           </p>
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-5">
@@ -154,7 +145,7 @@ export default function HeroSection() {
               </Button>
             </a>
           </div>
-        </motion.div>
+        </div>
       </div>
     </section>
   );

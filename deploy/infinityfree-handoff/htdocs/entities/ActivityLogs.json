@@ -1,0 +1,33 @@
+{
+  "name": "ActivityLog",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "Email of the user who performed the action"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "Name of the user"
+    },
+    "action": {
+      "type": "string",
+      "description": "Action performed"
+    },
+    "entity_type": {
+      "type": "string",
+      "description": "Type of entity affected"
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "ID of the entity affected"
+    },
+    "details": {
+      "type": "string",
+      "description": "Additional details about the action"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}

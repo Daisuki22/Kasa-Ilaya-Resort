@@ -16,7 +16,7 @@ export const getActivityLogSeverity = (log) => {
 
 export const activityLogSeverityStyles = {
   high: "bg-destructive/10 text-destructive border-destructive/20",
-  medium: "bg-accent/20 text-accent-foreground border-accent/30",
+  medium: "bg-accent/20 text-accent-foreground border-accent/30 text-foreground",
   low: "bg-primary/10 text-primary border-primary/20",
 };
 

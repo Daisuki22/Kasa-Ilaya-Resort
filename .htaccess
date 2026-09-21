@@ -1,0 +1,12 @@
+DirectoryIndex dist/index.html
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /Kasa-Ilaya-Resort/
+
+  RewriteCond %{REQUEST_URI} !^/Kasa-Ilaya-Resort/api/
+  RewriteCond %{REQUEST_URI} !^/Kasa-Ilaya-Resort/dist/
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ dist/index.html [L]
+</IfModule>

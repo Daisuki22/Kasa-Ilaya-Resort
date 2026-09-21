@@ -107,7 +107,7 @@ export default function ResortGallerySlider() {
 
   return (
     <section className="relative overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(56,161,105,0.16),_transparent_42%),linear-gradient(180deg,_hsl(var(--background)),_hsl(var(--muted)/0.45))] px-4 py-20 sm:px-6 lg:px-10 xl:px-14">
-      <div className="mx-auto max-w-7xl space-y-8">
+      <div className="w-full max-w-none space-y-8">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -132,14 +132,16 @@ export default function ResortGallerySlider() {
             initial={{ opacity: 0, y: 28 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.15 }}
-            transition={{ duration: 0.7 }}
-            className="relative overflow-hidden rounded-[2rem] border border-border/70 bg-card/70 shadow-[0_30px_100px_-45px_rgba(15,23,42,0.65)]"
+          transition={{ duration: 0.7 }}
+            className="relative overflow-hidden rounded-lg border border-border/70 bg-card/70 shadow-[0_24px_70px_-45px_rgba(15,23,42,0.65)]"
           >
             <div className="relative aspect-[16/9] overflow-hidden">
               <img
                 key={activeSlide.src}
                 src={activeSlide.src}
                 alt={activeSlide.title}
+                loading="lazy"
+                decoding="async"
                 className="h-full w-full object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent" />
@@ -172,7 +174,7 @@ export default function ResortGallerySlider() {
               ) : null}
 
               <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
-                <div className="max-w-xl rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white backdrop-blur-md sm:px-5 sm:py-4">
+                <div className="max-w-xl rounded-lg border border-white/10 bg-black/40 px-4 py-3 text-white backdrop-blur-md sm:px-5 sm:py-4">
                   <div className="text-[11px] uppercase tracking-[0.22em] text-white/70 sm:text-xs">Featured Photo</div>
                   <h3 className="mt-1.5 font-display text-xl font-bold sm:text-2xl">{activeSlide.title}</h3>
                   <p className="mt-1.5 text-xs leading-5 text-white/80 sm:text-sm sm:leading-6">{activeSlide.subtitle}</p>
@@ -196,7 +198,7 @@ export default function ResortGallerySlider() {
                   key={`${slide.src}-${index}`}
                   type="button"
                   onClick={() => setActiveIndex(index)}
-                  className={`group overflow-hidden rounded-[1.35rem] border text-left transition-all ${
+                  className={`group overflow-hidden rounded-lg border text-left transition-all ${
                     isActive
                       ? "border-primary shadow-lg shadow-primary/15"
                       : "border-border/70 bg-card/60 hover:border-primary/40"
@@ -206,6 +208,8 @@ export default function ResortGallerySlider() {
                     <img
                       src={slide.src}
                       alt={slide.title}
+                      loading="lazy"
+                      decoding="async"
                       className={`h-full w-full object-cover transition duration-500 ${isActive ? "scale-105" : "group-hover:scale-105"}`}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent" />

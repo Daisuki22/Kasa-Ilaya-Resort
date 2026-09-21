@@ -46,6 +46,7 @@ const bookingTourLabels = {
   night_tour: "Night Tour",
   "22_hours": "22 Hours",
 };
+const asArray = (value) => (Array.isArray(value) ? value : []);
 
 const getBookingDateSpan = (booking) => {
   const start = new Date(`${booking.booking_date}T00:00:00`);
@@ -79,12 +80,12 @@ export default function UpcomingScheduleSection({ allowAdminActions = false }) {
     queryFn: () => baseClient.entities.Booking.filter({ status: ["pending", "confirmed", "completed"] }, "booking_date", 500),
   });
 
-  const upcomingSchedules = schedules.filter((schedule) => {
+  const upcomingSchedules = asArray(schedules).filter((schedule) => {
     const date = new Date(`${schedule.schedule_date}T00:00:00`);
     return !isBefore(startOfDay(date), today);
   });
 
-  const upcomingBookings = bookings.filter((booking) => {
+  const upcomingBookings = asArray(bookings).filter((booking) => {
     const span = getBookingDateSpan(booking);
     const lastDate = span[span.length - 1];
     return !isBefore(startOfDay(lastDate), today);
@@ -236,14 +237,14 @@ export default function UpcomingScheduleSection({ allowAdminActions = false }) {
 
   return (
     <section className="bg-gradient-to-b from-background via-muted/20 to-background py-24 sm:py-28 lg:py-32">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">
+      <div className="w-full max-w-none px-2 sm:px-3 lg:px-4">
         <div className="mb-12 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <Badge variant="outline" className="mb-3 border-primary/20 bg-primary/5 text-primary">
-              {canManageSchedules ? "Resort Events" : "Resort Calendar"}
+              {canManageSchedules ? "Reservation" : "Resort Calendar"}
             </Badge>
             <h2 className="font-display text-3xl font-bold text-foreground sm:text-4xl">
-              {canManageSchedules ? "Manage Events" : "Upcoming Schedule"}
+              {canManageSchedules ? "Reservation" : "Upcoming Schedule"}
             </h2>
             <p className="mt-3 max-w-3xl text-muted-foreground leading-8">
               Browse reserved dates and upcoming events at Kasa Ilaya.
@@ -270,13 +271,20 @@ export default function UpcomingScheduleSection({ allowAdminActions = false }) {
                 <Calendar
                   mode="single"
                   selected={selectedDate}
-                  onSelect={(date) => date && setSelectedDate(date)}
+                  disabled={{ before: today }}
+                  onSelect={(date) => {
+                    if (!date || isBefore(startOfDay(date), today)) {
+                      return;
+                    }
+
+                    setSelectedDate(date);
+                  }}
                   modifiers={{ scheduled: scheduledDates, booked: bookingDates }}
                   modifiersClassNames={{
                     scheduled: "bg-primary/15 text-primary font-semibold ring-1 ring-primary/30",
                     booked: "bg-secondary/20 text-secondary-foreground font-semibold ring-1 ring-secondary/40",
                   }}
-                  className="rounded-xl border bg-background p-4 sm:p-5"
+                  className="rounded-lg border bg-background p-4 sm:p-5"
                   classNames={{
                     months: "flex flex-col gap-6",
                     month: "space-y-5",
@@ -285,6 +293,7 @@ export default function UpcomingScheduleSection({ allowAdminActions = false }) {
                     head_cell: "text-muted-foreground rounded-md w-12 sm:w-14 font-normal text-sm",
                     cell: "h-12 w-12 sm:h-14 sm:w-14 text-center text-sm p-0 relative [&:has([aria-selected])]:bg-accent [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected].day-range-end)]:rounded-r-md focus-within:relative focus-within:z-20",
                     day: "h-12 w-12 sm:h-14 sm:w-14 p-0 text-sm sm:text-base font-normal aria-selected:opacity-100 hover:bg-accent hover:text-accent-foreground rounded-md",
+                    day_disabled: "text-muted-foreground opacity-35 pointer-events-none hover:bg-transparent hover:text-muted-foreground",
                   }}
                 />
               </div>
@@ -314,7 +323,7 @@ export default function UpcomingScheduleSection({ allowAdminActions = false }) {
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
                   </div>
                 ) : selectedDateSchedules.length === 0 && selectedDateBookings.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+                  <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
                     No scheduled event for this date yet.
                   </div>
                 ) : (
@@ -326,7 +335,7 @@ export default function UpcomingScheduleSection({ allowAdminActions = false }) {
                           Manual Schedules
                         </div>
                         {selectedDateSchedules.map((schedule) => (
-                          <div key={schedule.id} className="rounded-2xl border border-border bg-muted/30 p-4">
+                          <div key={schedule.id} className="rounded-lg border border-border bg-muted/30 p-4">
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 <h3 className="font-semibold text-foreground">{schedule.title}</h3>
@@ -375,7 +384,7 @@ export default function UpcomingScheduleSection({ allowAdminActions = false }) {
                           Booking Schedules
                         </div>
                         {selectedDateBookings.map((booking) => (
-                          <div key={booking.id} className="rounded-2xl border border-secondary/20 bg-secondary/5 p-4">
+                          <div key={booking.id} className="rounded-lg border border-secondary/20 bg-secondary/5 p-4">
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 <h3 className="font-semibold text-foreground">{booking.package_name}</h3>
@@ -423,7 +432,7 @@ export default function UpcomingScheduleSection({ allowAdminActions = false }) {
                     <button
                       key={schedule.id}
                       type="button"
-                      className="flex w-full items-start justify-between rounded-xl border border-border px-4 py-3 text-left transition hover:border-primary/30 hover:bg-primary/5"
+                      className="flex w-full items-start justify-between rounded-lg border border-border px-4 py-3 text-left transition hover:border-primary/30 hover:bg-primary/5"
                       onClick={() => setSelectedDate(new Date(`${schedule.date}T00:00:00`))}
                     >
                       <div>

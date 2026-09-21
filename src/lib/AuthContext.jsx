@@ -67,10 +67,12 @@ export const AuthProvider = ({ children }) => {
             checkAppState();
         };
 
+        window.addEventListener('auth-changed', syncAuthState);
         window.addEventListener('local-auth-changed', syncAuthState);
         window.addEventListener('storage', syncAuthState);
 
         return () => {
+            window.removeEventListener('auth-changed', syncAuthState);
             window.removeEventListener('local-auth-changed', syncAuthState);
             window.removeEventListener('storage', syncAuthState);
         };

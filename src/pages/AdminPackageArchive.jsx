@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { baseClient } from "@/api/baseClient";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -12,8 +12,10 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, RotateCcw } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Eye, History, Loader2, MessageSquareMore, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
+import { isSuperAdmin } from "@/lib/adminAccess";
 
 const sortPackagesForDisplay = (packages) =>
   [...packages].sort((left, right) => left.name.localeCompare(right.name));
@@ -23,6 +25,89 @@ const sortQrCodesForDisplay = (codes) =>
 
 const sortUsersForDisplay = (users) =>
   [...users].sort((left, right) => String(left.full_name || "").localeCompare(String(right.full_name || "")));
+
+const archiveHistoryActions = [
+  "archived",
+  "archive",
+  "restored",
+  "restore",
+];
+
+const formatHistoryDate = (value) => {
+  if (!value) return "-";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return format(date, "MMM d, yyyy h:mm a");
+};
+
+
+export default function AdminPackageArchive() {
+
+  const [error] = useState(null);
+  const queryClient = useQueryClient();
+  const [user, setUser] = useState(null);
+  const [restoreBookingId, setRestoreBookingId] = useState(null);
+  const [restorePackageId, setRestorePackageId] = useState(null);
+  const [restoreQrId, setRestoreQrId] = useState(null);
+  const [restoreUserId, setRestoreUserId] = useState(null);
+  const [restoreAmenityId, setRestoreAmenityId] = useState(null);
+  const [selectedArchivedInquiryId, setSelectedArchivedInquiryId] = useState(null);
+
+  useEffect(() => {
+    baseClient.auth.me().then(setUser).catch(() => setUser(null));
+  }, []);
+
+  const canViewArchiveHistory = isSuperAdmin(user);
+
+  // Fetch archived bookings (show both archived and cancelled as archived)
+  const bookingsQuery = useQuery({
+    queryKey: ["admin-bookings-archived"],
+    queryFn: () => baseClient.entities.Booking.filter({ status: ["archived", "cancelled"] }, "-created_date", 500),
+  });
+  const archivedBookings = bookingsQuery.data || [];
+  const isLoadingBookings = bookingsQuery.isLoading;
+
+  // Fetch archived packages
+  const packagesQuery = useQuery({
+    queryKey: ["admin-packages-archived"],
+    queryFn: () => baseClient.entities.Package.filter({ is_active: false }, "name"),
+  });
+  const archivedPackages = packagesQuery.data || [];
+  const isLoadingPackages = packagesQuery.isLoading;
+
+  // Fetch QR codes
+  const qrQuery = useQuery({
+    queryKey: ["admin-payment-qr-codes"],
+    queryFn: () => baseClient.entities.PaymentQrCode.list("display_order", 50),
+  });
+  const qrCodes = qrQuery.data || [];
+  const isLoadingQrCodes = qrQuery.isLoading;
+
+  const handleRestoreBooking = async () => {
+    const booking = archivedBookings.find((entry) => entry.id === restoreBookingId);
+    try {
+      await baseClient.entities.Booking.update(restoreBookingId, { status: "pending" });
+      await baseClient.entities.ActivityLog.create({
+        user_email: user?.email,
+        user_name: user?.full_name,
+        action: "Restored Booking",
+        entity_type: "Booking",
+        entity_id: restoreBookingId,
+        details: `Restored archived booking: ${booking?.booking_reference}`,
+      });
+      toast.success("Booking restored successfully.");
+      queryClient.invalidateQueries({ queryKey: ["admin-all-bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-bookings-archived"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["my-bookings"] });
+    } catch (error) {
+      toast.error(error?.message || "Unable to restore booking.");
+    } finally {
+      setRestoreBookingId(null);
+    }
+  };
 
 const roleBadgeClass = {
   super_admin: "bg-primary/10 text-primary border-primary/30",
@@ -36,43 +121,82 @@ const roleLabel = {
   guest: "Guest",
 };
 
-export default function AdminPackageArchive() {
-  const queryClient = useQueryClient();
-  const [user, setUser] = useState(null);
-  const [restorePackageId, setRestorePackageId] = useState(null);
-  const [restoreQrId, setRestoreQrId] = useState(null);
-  const [restoreUserId, setRestoreUserId] = useState(null);
+// Duplicate component and state declarations removed. Only one AdminPackageArchive component should exist.
 
-  useEffect(() => {
-    baseClient.auth.me().then(setUser).catch(() => setUser(null));
-  }, []);
 
-  const { data: archivedPackages = [], isLoading: isLoadingPackages } = useQuery({
-    queryKey: ["admin-packages-archived"],
-    queryFn: () => baseClient.entities.Package.filter({ is_active: false }, "name"),
-  });
-
-  const { data: qrCodes = [], isLoading: isLoadingQrCodes } = useQuery({
-    queryKey: ["admin-payment-qr-codes"],
-    queryFn: () => baseClient.entities.PaymentQrCode.list("display_order", 50),
-  });
-
-  const { data: users = [], isLoading: isLoadingUsers } = useQuery({
+  // Fetch users
+  const usersQuery = useQuery({
     queryKey: ["admin-user-permissions"],
     queryFn: () => baseClient.entities.User.list("full_name", 1000),
   });
+  const users = usersQuery.data || [];
+  const isLoadingUsers = usersQuery.isLoading;
+
+  // Fetch archived amenities
+  const amenitiesQuery = useQuery({
+    queryKey: ["admin-amenities-archived"],
+    queryFn: () => baseClient.entities.FoundItem.filter({ is_active: false }, "-date_found", 500),
+  });
+  const archivedAmenities = amenitiesQuery.data || [];
+  const isLoadingAmenities = amenitiesQuery.isLoading;
+
+  const archiveHistoryQuery = useQuery({
+    queryKey: ["admin-archive-history"],
+    queryFn: () => baseClient.entities.ActivityLog.list("-created_date", 500),
+    enabled: canViewArchiveHistory,
+  });
+
+  const archiveHistory = useMemo(
+    () => (archiveHistoryQuery.data || []).filter((log) => {
+      const content = `${log.action || ""} ${log.details || ""}`.toLowerCase();
+      return archiveHistoryActions.some((keyword) => content.includes(keyword));
+    }),
+    [archiveHistoryQuery.data]
+  );
+
+  const archivedInquiriesQuery = useQuery({
+    queryKey: ["admin-inquiries-archived"],
+    queryFn: () => baseClient.inquiries.list("archived"),
+    enabled: canViewArchiveHistory,
+  });
+  const archivedInquiries = archivedInquiriesQuery.data || [];
+
+  const archivedInquiryThreadQuery = useQuery({
+    queryKey: ["admin-archived-inquiry-thread", selectedArchivedInquiryId],
+    queryFn: () => baseClient.inquiries.thread(selectedArchivedInquiryId),
+    enabled: Boolean(canViewArchiveHistory && selectedArchivedInquiryId),
+  });
+
+  const inquiryArchiveLogById = useMemo(() => {
+    const logsById = new Map();
+
+    for (const log of archiveHistory) {
+      if (log.entity_type !== "Inquiry" || !String(log.action || "").toLowerCase().includes("archived")) {
+        continue;
+      }
+
+      if (!logsById.has(log.entity_id)) {
+        logsById.set(log.entity_id, log);
+      }
+    }
+
+    return logsById;
+  }, [archiveHistory]);
 
   const archivedQrCodes = useMemo(
-    () => sortQrCodesForDisplay(qrCodes.filter((entry) => entry.is_active === false || entry.is_active === 0 || entry.is_active === "0")),
+    () => sortQrCodesForDisplay((qrCodes || []).filter((entry) => entry.is_active === false || entry.is_active === 0 || entry.is_active === "0")),
     [qrCodes]
   );
 
   const archivedUsers = useMemo(
-    () => sortUsersForDisplay(users.filter((entry) => Boolean(entry.disabled))),
+    () => sortUsersForDisplay((users || []).filter((entry) => Boolean(entry.disabled))),
     [users]
   );
 
-  const isLoading = isLoadingPackages || isLoadingQrCodes || isLoadingUsers;
+
+  // Combine all loading and error states
+  const isLoading = isLoadingPackages || isLoadingQrCodes || isLoadingUsers || isLoadingBookings || isLoadingAmenities;
+  const queryError = bookingsQuery.error || packagesQuery.error || qrQuery.error || usersQuery.error || amenitiesQuery.error || archiveHistoryQuery.error || archivedInquiriesQuery.error || archivedInquiryThreadQuery.error;
 
   const handleRestorePackage = async () => {
     const pkg = archivedPackages.find((entry) => entry.id === restorePackageId);
@@ -149,13 +273,44 @@ export default function AdminPackageArchive() {
     }
   };
 
+    const handleRestoreAmenity = async () => {
+      const amenity = archivedAmenities.find((entry) => entry.id === restoreAmenityId);
+      try {
+        await baseClient.entities.FoundItem.update(restoreAmenityId, { is_active: true });
+        await baseClient.entities.ActivityLog.create({
+          user_email: user?.email,
+          user_name: user?.full_name,
+          action: "Restored Amenity",
+          entity_type: "Amenity",
+          entity_id: restoreAmenityId,
+          details: `Restored amenity: ${amenity?.item_name}`,
+        });
+        toast.success("Amenity restored.");
+        queryClient.invalidateQueries({ queryKey: ["admin-amenities"] });
+        queryClient.invalidateQueries({ queryKey: ["admin-amenities-archived"] });
+        queryClient.invalidateQueries({ queryKey: ["public-amenities"] });
+      } catch (error) {
+        toast.error(error?.message || "Unable to restore amenity.");
+      } finally {
+        setRestoreAmenityId(null);
+      }
+    };
+
+  if (error || queryError) {
+    return (
+      <div style={{ color: 'red', padding: 32 }}>
+        <h2>Error in Archive Page</h2>
+        <pre>{(error && (error.message || String(error))) || (queryError && (queryError.message || String(queryError)))}</pre>
+      </div>
+    );
+  }
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
+    <div className="w-full max-w-none px-2 py-6 sm:px-3 lg:px-4">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold text-foreground">Archive</h1>
           <p className="mt-1 text-muted-foreground">
-            Restore archived packages, QR codes, and user accounts from one page.
+            Restore archived packages, QR codes, user accounts, amenities, and reservations from one page.
           </p>
         </div>
       </div>
@@ -166,6 +321,61 @@ export default function AdminPackageArchive() {
         </div>
       ) : (
         <div className="space-y-8">
+          <section>
+            <div className="mb-4">
+              <h2 className="font-display text-2xl font-bold text-foreground">Archived Reservations</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Restore archived reservations back to Reservation Management.</p>
+            </div>
+            <Card>
+              <CardContent className="p-0 overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Reference</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Package</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {archivedBookings.length ? (
+                      archivedBookings.map((booking) => (
+                        <TableRow key={booking.id}>
+                          <TableCell className="font-mono text-sm">{booking.booking_reference}</TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium text-sm">{booking.customer_name}</p>
+                              <p className="text-xs text-muted-foreground">{booking.customer_email}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>{booking.package_name}</TableCell>
+                          <TableCell>{booking.booking_date ? format(new Date(booking.booking_date), "MMM d, yyyy") : "-"}</TableCell>
+                          <TableCell className="font-semibold text-secondary">PHP {booking.total_amount?.toLocaleString()}</TableCell>
+                          <TableCell><Badge variant="outline">{booking.status}</Badge></TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="outline" size="sm" className="gap-2" onClick={() => setRestoreBookingId(booking.id)}>
+                              <RotateCcw className="h-4 w-4" />
+                              Restore
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                          No archived reservations.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </section>
+
           <section>
             <div className="mb-4">
               <h2 className="font-display text-2xl font-bold text-foreground">Archived Packages</h2>
@@ -189,9 +399,9 @@ export default function AdminPackageArchive() {
                       sortPackagesForDisplay(archivedPackages).map((pkg) => (
                         <TableRow key={pkg.id}>
                           <TableCell className="font-medium">{pkg.name}</TableCell>
-                          <TableCell className="font-semibold text-secondary">₱{pkg.day_tour_price?.toLocaleString() || 0}</TableCell>
-                          <TableCell className="font-semibold text-secondary">₱{pkg.night_tour_price?.toLocaleString() || 0}</TableCell>
-                          <TableCell className="font-semibold text-secondary">₱{pkg.twenty_two_hour_price?.toLocaleString() || 0}</TableCell>
+                          <TableCell className="font-semibold text-secondary">PHP {pkg.day_tour_price?.toLocaleString() || 0}</TableCell>
+                          <TableCell className="font-semibold text-secondary">PHP {pkg.night_tour_price?.toLocaleString() || 0}</TableCell>
+                          <TableCell className="font-semibold text-secondary">PHP {pkg.twenty_two_hour_price?.toLocaleString() || 0}</TableCell>
                           <TableCell>{pkg.max_guests}</TableCell>
                           <TableCell className="text-right">
                             <Button variant="outline" size="sm" className="gap-2" onClick={() => setRestorePackageId(pkg.id)}>
@@ -328,7 +538,199 @@ export default function AdminPackageArchive() {
               </CardContent>
             </Card>
           </section>
-        </div>
+
+        <section>
+            <div className="mb-4">
+              <h2 className="font-display text-2xl font-bold text-foreground">Archived Amenities</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Restore archived amenities so they can be seen in the active amenities list again.</p>
+            </div>
+          <Card>
+                    <CardContent className="overflow-x-auto p-0">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Photo</TableHead>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Description</TableHead>
+                            <TableHead>Location</TableHead>
+                            <TableHead>In-Charge</TableHead>
+                            <TableHead className="text-right">Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {archivedAmenities.length ? (
+                            archivedAmenities.map((amenity) => (
+                              <TableRow key={amenity.id}>
+                                <TableCell>
+                                  {amenity.image_url ? (
+                                    <img src={amenity.image_url} alt={amenity.item_name} className="h-12 w-12 rounded-lg object-cover border border-border" />
+                                  ) : (
+                                    <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center" />
+                                  )}
+                                </TableCell>
+                                <TableCell className="font-medium">{amenity.item_name}</TableCell>
+                                <TableCell>{amenity.description || "-"}</TableCell>
+                                <TableCell>{amenity.location_found || "-"}</TableCell>
+                                <TableCell>{amenity.found_by || "-"}</TableCell>
+                                <TableCell className="text-right">
+                                  <Button variant="outline" size="sm" className="gap-2" onClick={() => setRestoreAmenityId(amenity.id)}>
+                                    <RotateCcw className="h-4 w-4" />
+                                    Restore
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+                                No archived amenities.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+        </section>
+
+        {canViewArchiveHistory ? (
+          <section>
+            <div className="mb-4">
+              <h2 className="font-display text-2xl font-bold text-foreground">Archived Inquiry Chats</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Review archived guest inquiry conversations and their archive details.</p>
+            </div>
+            <Card>
+              <CardContent className="overflow-x-auto p-0">
+                {archivedInquiriesQuery.isLoading ? (
+                  <div className="flex justify-center py-12 text-muted-foreground">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Guest</TableHead>
+                        <TableHead>Subject</TableHead>
+                        <TableHead>Last Message</TableHead>
+                        <TableHead>Archived By</TableHead>
+                        <TableHead>Updated</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {archivedInquiries.length ? (
+                        archivedInquiries.map((inquiry) => {
+                          const archiveLog = inquiryArchiveLogById.get(inquiry.id);
+
+                          return (
+                            <TableRow key={inquiry.id}>
+                              <TableCell>
+                                <div>
+                                  <p className="text-sm font-medium text-foreground">{inquiry.guest_name || "Guest"}</p>
+                                  <p className="text-xs text-muted-foreground">{inquiry.guest_email || "No email"}</p>
+                                </div>
+                              </TableCell>
+                              <TableCell className="font-medium">{inquiry.subject || "-"}</TableCell>
+                              <TableCell className="min-w-[18rem] text-sm text-muted-foreground">{inquiry.last_message_preview || "-"}</TableCell>
+                              <TableCell>
+                                <div>
+                                  <p className="text-sm font-medium text-foreground">{archiveLog?.user_name || "Unknown"}</p>
+                                  <p className="text-xs text-muted-foreground">{archiveLog?.user_email || "No archive log"}</p>
+                                </div>
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                                {formatHistoryDate(inquiry.last_message_at || inquiry.updated_date)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button variant="outline" size="sm" className="gap-2" onClick={() => setSelectedArchivedInquiryId(inquiry.id)}>
+                                  <Eye className="h-4 w-4" />
+                                  View Chat
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+                            No archived inquiry chats.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </section>
+        ) : null}
+
+        {canViewArchiveHistory ? (
+          <section>
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="font-display text-2xl font-bold text-foreground">Archive History</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Track archived and restored items with the admin account that performed each action.</p>
+              </div>
+              <Badge variant="outline" className="w-fit gap-2">
+                <History className="h-3.5 w-3.5" />
+                Super admin only
+              </Badge>
+            </div>
+            <Card>
+              <CardContent className="overflow-x-auto p-0">
+                {archiveHistoryQuery.isLoading ? (
+                  <div className="flex justify-center py-12 text-muted-foreground">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Action</TableHead>
+                        <TableHead>Item Type</TableHead>
+                        <TableHead>Details</TableHead>
+                        <TableHead>Admin</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {archiveHistory.length ? (
+                        archiveHistory.map((log) => (
+                          <TableRow key={log.id}>
+                            <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                              {formatHistoryDate(log.created_date || log.updated_date)}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="capitalize">
+                                {log.action || "Archive action"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-medium">{log.entity_type || "-"}</TableCell>
+                            <TableCell className="min-w-[18rem] text-sm text-muted-foreground">{log.details || "-"}</TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="text-sm font-medium text-foreground">{log.user_name || "System"}</p>
+                                <p className="text-xs text-muted-foreground">{log.user_email || "No email"}</p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                            No archive history yet.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </section>
+        ) : null}
+      </div>
       )}
 
       <AlertDialog open={!!restorePackageId} onOpenChange={(open) => !open && setRestorePackageId(null)}>
@@ -375,6 +777,87 @@ export default function AdminPackageArchive() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={!!restoreAmenityId} onOpenChange={(open) => !open && setRestoreAmenityId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore Amenity?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will move the amenity back to the active amenities list and make it available again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRestoreAmenity}>Restore</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!restoreBookingId} onOpenChange={(open) => !open && setRestoreBookingId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore Reservation?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will move the reservation back to Reservation Management and make it active again.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRestoreBooking}>Restore</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={!!selectedArchivedInquiryId} onOpenChange={(open) => !open && setSelectedArchivedInquiryId(null)}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Archived Inquiry Chat</DialogTitle>
+          </DialogHeader>
+          {archivedInquiryThreadQuery.isLoading ? (
+            <div className="flex justify-center py-12 text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border bg-muted/20 p-4">
+                <p className="text-lg font-semibold text-foreground">{archivedInquiryThreadQuery.data?.inquiry?.subject || "Archived inquiry"}</p>
+                <p className="text-sm text-muted-foreground">
+                  {archivedInquiryThreadQuery.data?.inquiry?.guest_name || "Guest"} &bull; {archivedInquiryThreadQuery.data?.inquiry?.guest_email || "No email"}
+                </p>
+              </div>
+
+              <div className="max-h-[60vh] space-y-3 overflow-y-auto rounded-lg border border-border bg-muted/10 p-4">
+                {(archivedInquiryThreadQuery.data?.messages || []).map((message) => {
+                  const isAdminMessage = message.sender_type === "admin";
+
+                  return (
+                    <div key={message.id} className={`flex ${isAdminMessage ? "justify-end" : "justify-start"}`}>
+                      <div
+                        className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
+                          isAdminMessage
+                            ? "bg-primary text-primary-foreground"
+                            : "border border-border bg-background text-foreground"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 text-xs opacity-80">
+                          <MessageSquareMore className="h-3.5 w-3.5" />
+                          <span>{message.sender_name}</span>
+                          <span>{formatHistoryDate(message.created_date)}</span>
+                        </div>
+                        <p className="mt-2 whitespace-pre-wrap leading-6">{message.message}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {!archivedInquiryThreadQuery.data?.messages?.length ? (
+                  <div className="py-10 text-center text-sm text-muted-foreground">No messages found for this archived inquiry.</div>
+                ) : null}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Plus, Upload, X } from "lucide-react";
+import { Check, ImagePlus, Loader2, Plus, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 const createDefaultForm = () => ({
@@ -151,111 +151,142 @@ export default function PackageFormDialog({ open, onOpenChange, pkg, onSave }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent key={pkg?.id || "new-package"} className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent key={pkg?.id || "new-package"} className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-3xl overflow-y-auto sm:max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle className="font-display">{pkg ? "Edit Package" : "Add New Package"}</DialogTitle>
+          <DialogTitle className="font-display text-2xl">{pkg ? "Edit Package" : "Add New Package"}</DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            Configure details, tour pricing, capacity, inclusions, and images for the guest booking page.
+          </p>
         </DialogHeader>
+
         <form
-          className="space-y-4"
+          className="space-y-5"
           onSubmit={(event) => {
             event.preventDefault();
             handleSubmit();
           }}
         >
-          <div>
-            <Label>Package Name *</Label>
-            <Input value={form.name} onChange={e => setForm((prev) => ({...prev, name: e.target.value}))} placeholder="Deluxe Resort Package" className="mt-1" />
-          </div>
-          <div>
-            <Label>Description</Label>
-            <Textarea value={form.description} onChange={e => setForm((prev) => ({...prev, description: e.target.value}))} placeholder="Describe the package..." rows={3} className="mt-1" />
-          </div>
-          <div>
-            <Label>Tour Prices (₱) *</Label>
-            <div className="mt-1 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <section className="rounded-xl border border-border bg-muted/20 p-4">
+            <div className="mb-4">
+              <h3 className="font-semibold text-foreground">Package Details</h3>
+              <p className="text-sm text-muted-foreground">Name and description shown to guests.</p>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <Label>Package Name *</Label>
+                <Input value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} placeholder="Deluxe Resort Package" className="mt-1" />
+              </div>
+              <div>
+                <Label>Description</Label>
+                <Textarea value={form.description} onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))} placeholder="Describe the package experience, spaces, and best-fit guests..." rows={4} className="mt-1" />
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-4">
+              <h3 className="font-semibold text-foreground">Pricing & Capacity</h3>
+              <p className="text-sm text-muted-foreground">Set rates for each tour type and the maximum guest capacity.</p>
+            </div>
+            <Label>Tour Prices (PHP) *</Label>
+            <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
                 <Label className="text-xs text-muted-foreground">Day Tour</Label>
-                <Input type="number" value={form.day_tour_price} onChange={e => setForm((prev) => ({...prev, day_tour_price: parseFloat(e.target.value) || 0}))} className="mt-1" />
+                <Input type="number" value={form.day_tour_price} onChange={(event) => setForm((prev) => ({ ...prev, day_tour_price: parseFloat(event.target.value) || 0 }))} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Night Tour</Label>
-                <Input type="number" value={form.night_tour_price} onChange={e => setForm((prev) => ({...prev, night_tour_price: parseFloat(e.target.value) || 0}))} className="mt-1" />
+                <Input type="number" value={form.night_tour_price} onChange={(event) => setForm((prev) => ({ ...prev, night_tour_price: parseFloat(event.target.value) || 0 }))} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">22 Hours</Label>
-                <Input type="number" value={form.twenty_two_hour_price} onChange={e => setForm((prev) => ({...prev, twenty_two_hour_price: parseFloat(e.target.value) || 0}))} className="mt-1" />
+                <Input type="number" value={form.twenty_two_hour_price} onChange={(event) => setForm((prev) => ({ ...prev, twenty_two_hour_price: parseFloat(event.target.value) || 0 }))} className="mt-1" />
               </div>
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
+            <div className="mt-4 max-w-xs">
               <Label>Max Guests</Label>
-              <Input type="number" value={form.max_guests} onChange={e => setForm((prev) => ({...prev, max_guests: parseInt(e.target.value) || 10}))} className="mt-1" />
+              <Input type="number" value={form.max_guests} onChange={(event) => setForm((prev) => ({ ...prev, max_guests: parseInt(event.target.value) || 10 }))} className="mt-1" />
             </div>
-            <div>
-              <Label>Package Images</Label>
-              <div className="mt-1 space-y-3">
-                <label className="flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
-                  {uploadingImages ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                  <span>{uploadingImages ? "Uploading images..." : "Upload one or more images"}</span>
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={uploadingImages} />
-                </label>
-                {form.gallery_images?.length ? (
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {form.gallery_images.map((imageUrl, index) => (
-                        <div key={imageUrl} className="overflow-hidden rounded-lg border border-border bg-muted/30">
-                          <img src={imageUrl} alt={`${form.name || "Package"} preview ${index + 1}`} className="h-24 w-full object-cover" />
-                          <div className="space-y-2 p-2">
-                            <div className="text-[11px] text-muted-foreground">
-                              {index === 0 ? "Cover image" : `Image ${index + 1}`}
-                            </div>
-                            <div className="flex gap-2">
-                              {index !== 0 ? (
-                                <Button type="button" variant="outline" size="sm" className="h-8 flex-1 px-2 text-xs" onClick={() => setCoverImage(imageUrl)}>
-                                  Set Cover
-                                </Button>
-                              ) : null}
-                              <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => removeImage(imageUrl)}>
-                                Remove
+          </section>
+
+          <section className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <ImagePlus className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-foreground">Package Images</h3>
+                <p className="text-sm text-muted-foreground">Upload photos and choose the cover image used on cards and booking previews.</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <label className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
+                {uploadingImages ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                <span>{uploadingImages ? "Uploading images..." : "Upload one or more images"}</span>
+                <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={uploadingImages} />
+              </label>
+              {form.gallery_images?.length ? (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {form.gallery_images.map((imageUrl, index) => (
+                      <div key={imageUrl} className="overflow-hidden rounded-lg border border-border bg-muted/30">
+                        <img src={imageUrl} alt={`${form.name || "Package"} preview ${index + 1}`} className="h-28 w-full object-cover" />
+                        <div className="space-y-2 p-2">
+                          <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                            {index === 0 ? <Check className="h-3 w-3 text-primary" /> : null}
+                            {index === 0 ? "Cover image" : `Image ${index + 1}`}
+                          </div>
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            {index !== 0 ? (
+                              <Button type="button" variant="outline" size="sm" className="h-8 flex-1 px-2 text-xs" onClick={() => setCoverImage(imageUrl)}>
+                                Set Cover
                               </Button>
-                            </div>
+                            ) : null}
+                            <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => removeImage(imageUrl)}>
+                              Remove
+                            </Button>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground">The first image is used as the package cover and booking preview.</p>
+                      </div>
+                    ))}
                   </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">No images uploaded yet.</p>
-                )}
-              </div>
+                  <p className="text-xs text-muted-foreground">The first image is used as the package cover and booking preview.</p>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No images uploaded yet.</p>
+              )}
             </div>
-          </div>
-          <div>
+          </section>
+
+          <section className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-4">
+              <h3 className="font-semibold text-foreground">Inclusions & Visibility</h3>
+              <p className="text-sm text-muted-foreground">List what guests receive and choose whether this package is public.</p>
+            </div>
             <Label>Inclusions</Label>
-            <div className="flex gap-2 mt-1">
-              <Input value={newInclusion} onChange={e => setNewInclusion(e.target.value)} onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addInclusion())} placeholder="e.g. Free breakfast" />
+            <div className="mt-1 flex gap-2">
+              <Input value={newInclusion} onChange={(event) => setNewInclusion(event.target.value)} onKeyDown={(event) => event.key === "Enter" && (event.preventDefault(), addInclusion())} placeholder="e.g. Free breakfast" />
               <Button type="button" size="icon" variant="outline" onClick={addInclusion}><Plus className="h-4 w-4" /></Button>
             </div>
-            <div className="flex flex-wrap gap-2 mt-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               {form.inclusions?.map((item, i) => (
-                <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs">
+                <span key={`${item}-${i}`} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary">
                   {item}
-                  <button onClick={() => removeInclusion(i)}><X className="h-3 w-3" /></button>
+                  <button type="button" onClick={() => removeInclusion(i)}><X className="h-3 w-3" /></button>
                 </span>
               ))}
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch checked={form.is_active} onCheckedChange={v => setForm((prev) => ({...prev, is_active: v}))} />
-            <Label>Active (visible to users)</Label>
-          </div>
-          <DialogFooter>
+            <div className="mt-5 flex items-center gap-2 rounded-lg border border-border bg-muted/30 p-3">
+              <Switch checked={form.is_active} onCheckedChange={(value) => setForm((prev) => ({ ...prev, is_active: value }))} />
+              <Label>Active and visible to users</Label>
+            </div>
+          </section>
+
+          <DialogFooter className="border-t border-border pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={saving || uploadingImages || !form.name || (!form.day_tour_price && !form.night_tour_price && !form.twenty_two_hour_price)}>
-            {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            {pkg ? "Update" : "Create"} Package
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {pkg ? "Update" : "Create"} Package
             </Button>
           </DialogFooter>
         </form>

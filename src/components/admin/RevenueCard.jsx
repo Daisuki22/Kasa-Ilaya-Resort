@@ -53,7 +53,7 @@ export default function RevenueCards({ bookings }) {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {cards.map((card, i) => (
         <Card key={i} className="relative overflow-hidden">
-          <CardContent className="p-5">
+          <CardContent className="p-5 sm:p-6 sm:pt-6">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">{card.title}</p>

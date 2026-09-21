@@ -13,7 +13,7 @@ export default function FeaturesSection({ hideHeader = false }) {
 
   return (
     <section className="bg-card py-24 sm:py-28 lg:py-32">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">
+      <div className="w-full max-w-none px-2 sm:px-3 lg:px-4">
         {!hideHeader ? (
           <div className="mb-16 text-center lg:mb-20">
             <span className="text-secondary font-medium text-sm tracking-wider uppercase">{amenities_section_label}</span>
@@ -37,9 +37,9 @@ export default function FeaturesSection({ hideHeader = false }) {
                 whileInView={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1 }}
                 viewport={{ once: true }}
-                className="group rounded-2xl border border-border bg-background p-8 hover:border-primary/20 hover:shadow-lg transition-all duration-300"
+                className="group rounded-lg border border-border bg-background p-6 transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-md sm:p-8"
               >
-                <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-lg bg-primary/10 transition-colors group-hover:bg-primary/20">
                   <IconComponent className="h-6 w-6 text-primary" />
                 </div>
                 <h3 className="mb-2 text-lg font-semibold text-foreground">{item.title}</h3>

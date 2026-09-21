@@ -27,7 +27,7 @@ export default function ReviewsSection() {
 
   return (
     <section className="bg-muted/40 py-24 sm:py-28 lg:py-32">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">
+      <div className="w-full max-w-none px-2 sm:px-3 lg:px-4">
         <div className="mb-16 text-center lg:mb-20">
           <p className="text-secondary font-medium uppercase tracking-widest text-sm mb-2">Guest Stories</p>
           <h2 className="mb-5 font-display text-4xl font-bold text-foreground lg:text-5xl">What Our Guests Say</h2>

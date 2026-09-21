@@ -1,0 +1,45 @@
+{
+  "name": "Review",
+  "type": "object",
+  "properties": {
+    "booking_id": {
+      "type": "string",
+      "description": "Reference to the booking"
+    },
+    "booking_reference": {
+      "type": "string",
+      "description": "Booking reference code"
+    },
+    "guest_name": {
+      "type": "string",
+      "description": "Name of the reviewer"
+    },
+    "guest_email": {
+      "type": "string",
+      "description": "Email of the reviewer"
+    },
+    "package_name": {
+      "type": "string",
+      "description": "Package that was booked"
+    },
+    "rating": {
+      "type": "number",
+      "description": "Star rating 1-5"
+    },
+    "review_text": {
+      "type": "string",
+      "description": "Text review from the guest"
+    },
+    "is_approved": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the review is approved for display"
+    }
+  },
+  "required": [
+    "booking_id",
+    "guest_name",
+    "rating",
+    "review_text"
+  ]
+}

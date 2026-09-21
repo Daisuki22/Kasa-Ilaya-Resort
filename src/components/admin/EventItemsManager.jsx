@@ -1,4 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
+import { createPageUrl } from "@/utils";
+// If using react-router-dom v6, you can use useNavigate instead
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { baseClient } from "@/api/baseClient";
@@ -29,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Archive, ImagePlus, Loader2, PencilLine, Plus, X } from "lucide-react";
+import { Archive, CheckCircle2, Grid3X3, ImagePlus, Loader2, MapPin, PencilLine, Plus, Search, ShieldCheck, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
 const createEmptyForm = () => ({
@@ -43,8 +45,8 @@ const createEmptyForm = () => ({
 });
 
 const statusStyles = {
-  unclaimed: "bg-accent/20 text-accent-foreground border-accent/30",
-  claimed: "bg-primary/10 text-primary border-primary/20",
+  unclaimed: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  claimed: "bg-amber-100 text-amber-700 border-amber-200",
 };
 
 export default function EventItemsManager({ user }) {
@@ -56,6 +58,7 @@ export default function EventItemsManager({ user }) {
   const [isUploading, setIsUploading] = useState(false);
   const [archivingId, setArchivingId] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
   const [form, setForm] = useState(createEmptyForm());
 
   const { data: items = [], isLoading } = useQuery({
@@ -64,12 +67,35 @@ export default function EventItemsManager({ user }) {
   });
 
   const filteredItems = useMemo(() => {
-    if (statusFilter === "all") {
-      return items;
-    }
+    const query = searchTerm.trim().toLowerCase();
 
-    return items.filter((item) => item.status === statusFilter);
-  }, [items, statusFilter]);
+    return items.filter((item) => {
+      const matchesStatus = statusFilter === "all" || item.status === statusFilter;
+      const matchesSearch = !query || [
+        item.item_name,
+        item.description,
+        item.location_found,
+        item.found_by,
+      ].some((value) => String(value || "").toLowerCase().includes(query));
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [items, searchTerm, statusFilter]);
+
+  const summary = useMemo(() => {
+    const available = items.filter((item) => item.status !== "claimed").length;
+    const unavailable = items.filter((item) => item.status === "claimed").length;
+    const locations = new Set(items.map((item) => item.location_found).filter(Boolean));
+    const withPhotos = items.filter((item) => item.image_url).length;
+
+    return {
+      total: items.length,
+      available,
+      unavailable,
+      locations: locations.size,
+      withPhotos,
+    };
+  }, [items]);
 
   const openAddDialog = () => {
     setEditingItem(null);
@@ -179,7 +205,11 @@ export default function EventItemsManager({ user }) {
       await baseClient.entities.FoundItem.update(item.id, { is_active: false });
       await saveLog("Archived Amenity", item.id, `Archived amenity ${item.item_name}.`);
       await refreshItems();
-      toast.success("Amenity archived.");
+      toast.success("Amenity archived. Redirecting to Archive...");
+      // Redirect to Archive page after a short delay
+      setTimeout(() => {
+        window.location.href = createPageUrl("AdminPackageArchive");
+      }, 1200);
     } catch (error) {
       toast.error(error?.message || "Unable to archive amenity.");
     } finally {
@@ -188,19 +218,56 @@ export default function EventItemsManager({ user }) {
   };
 
   return (
-    <section className="mx-auto max-w-7xl px-4 sm:px-6 pb-12">
-      <Card className="border-border/70 shadow-sm">
-        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <section className="w-full max-w-none px-0 pb-6 pt-0">
+      <Card className="overflow-hidden border-border/70 shadow-sm">
+        <div className="grid gap-6 border-b border-border bg-gradient-to-br from-primary/10 via-card to-secondary/10 p-6 lg:grid-cols-[1fr_auto] lg:items-center">
           <div>
-            <CardTitle className="font-display text-2xl">Resort Amenities</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Manage the list of resort amenities displayed to guests.
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary">
+              <Sparkles className="h-3.5 w-3.5" />
+              Resort management
+            </div>
+            <CardTitle className="font-display text-3xl font-bold text-foreground">Resort Amenities</CardTitle>
+            <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
+              Manage guest-facing facilities, photos, availability, assigned areas, and staff responsibility from one clean workspace.
             </p>
           </div>
+          <Button className="gap-2" onClick={openAddDialog}>
+            <Plus className="h-4 w-4" />
+            Add Amenity
+          </Button>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="grid gap-3 border-b border-border p-4 sm:grid-cols-2 lg:grid-cols-5">
+          {[
+            { label: "Total amenities", value: summary.total, icon: Grid3X3, tone: "text-foreground" },
+            { label: "Available", value: summary.available, icon: CheckCircle2, tone: "text-emerald-700" },
+            { label: "Unavailable", value: summary.unavailable, icon: ShieldCheck, tone: "text-amber-700" },
+            { label: "Areas covered", value: summary.locations, icon: MapPin, tone: "text-primary" },
+            { label: "With photos", value: summary.withPhotos, icon: ImagePlus, tone: "text-secondary" },
+          ].map(({ label, value, icon: Icon, tone }) => (
+            <div key={label} className="rounded-lg border border-border bg-background p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">{label}</p>
+                <Icon className={`h-4 w-4 ${tone}`} />
+              </div>
+              <p className={`mt-2 text-2xl font-semibold ${tone}`}>{value}</p>
+            </div>
+          ))}
+        </div>
+
+        <CardHeader className="flex flex-col gap-4 border-b border-border sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex w-full flex-col gap-3 sm:flex-row">
+            <div className="relative sm:max-w-sm sm:flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search amenity, area, or staff"
+                className="pl-9"
+              />
+            </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="sm:w-48">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -209,10 +276,6 @@ export default function EventItemsManager({ user }) {
                 <SelectItem value="claimed">Unavailable</SelectItem>
               </SelectContent>
             </Select>
-            <Button className="gap-2" onClick={openAddDialog}>
-              <Plus className="h-4 w-4" />
-              Add Amenity
-            </Button>
           </div>
         </CardHeader>
 
@@ -237,7 +300,7 @@ export default function EventItemsManager({ user }) {
                 {filteredItems.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
-                      No amenities yet. Add your first resort amenity.
+                      No amenities match the current filters.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -248,26 +311,31 @@ export default function EventItemsManager({ user }) {
                           <img
                             src={item.image_url}
                             alt={item.item_name}
-                            className="h-12 w-12 rounded-lg object-cover border border-border"
+                            className="h-14 w-16 rounded-lg object-cover border border-border shadow-sm"
                           />
                         ) : (
-                          <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
+                          <div className="h-14 w-16 rounded-lg bg-muted flex items-center justify-center">
                             <ImagePlus className="h-5 w-5 text-muted-foreground/40" />
                           </div>
                         )}
                       </TableCell>
                       <TableCell>
-                        <div>
+                        <div className="min-w-56">
                           <p className="font-medium text-foreground">{item.item_name}</p>
                           {item.description ? (
-                            <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+                            <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{item.description}</p>
                           ) : null}
                         </div>
                       </TableCell>
-                      <TableCell>{item.location_found || "-"}</TableCell>
-                      <TableCell>{item.found_by || "-"}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={statusStyles[item.status] || statusStyles.unclaimed}>
+                        <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                          <MapPin className="h-3.5 w-3.5 text-primary" />
+                          {item.location_found || "No area set"}
+                        </span>
+                      </TableCell>
+                      <TableCell>{item.found_by || "Unassigned"}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        <Badge variant="outline" className={statusStyles[item.status] || statusStyles.unclaimed} >
                           {item.status === "unclaimed" ? "Available" : "Unavailable"}
                         </Badge>
                       </TableCell>

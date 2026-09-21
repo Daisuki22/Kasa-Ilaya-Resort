@@ -11,30 +11,35 @@ const SETTINGS_TABS = [
     label: "Homepage Content",
     icon: LayoutTemplate,
     desc: "Edit the website logo, hero image, hero text, and site name.",
+    superAdminOnly: true,
   },
   {
     id: "amenities",
     label: "Amenities Section",
     icon: Waves,
     desc: "Customize the amenities section label, title, and each amenity card.",
+    superAdminOnly: true,
   },
   {
     id: "text-style",
     label: "Text Style",
     icon: Type,
     desc: "Choose the body and heading font styles used across the website.",
+    superAdminOnly: true,
   },
   {
     id: "resort-rules",
     label: "Resort Rules",
     icon: BookOpen,
     desc: "Manage the resort rules visible to guests on the homepage.",
+    superAdminOnly: true,
   },
   {
     id: "terms-conditions",
     label: "Terms & Conditions",
     icon: FileText,
     desc: "Edit the guest-facing terms and conditions shown during booking and in the website footer.",
+    superAdminOnly: true,
   },
   {
     id: "resort-gallery",
@@ -45,9 +50,9 @@ const SETTINGS_TABS = [
   },
   {
     id: "packages-banner",
-    label: "Packages Banner",
+    label: "Page Banners",
     icon: ImageIcon,
-    desc: "Manage the banner photo shown on the guest Packages page. Super admins only.",
+    desc: "Manage the banner photos shown on guest pages except the homepage. Super admins only.",
     superAdminOnly: true,
   },
 ];
@@ -78,7 +83,7 @@ export default function AdminSystemSettings() {
   }, [activeTabInfo?.id]);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 space-y-6">
+    <div className="w-full max-w-none space-y-6 px-2 py-6 sm:px-3 lg:px-4">
       {/* Page header */}
       <div>
         <h1 className="font-display text-3xl font-bold text-foreground">System Settings</h1>

@@ -52,7 +52,122 @@ const getPackagePriceByTourType = (pkg, tourType) => {
 
 const FALLBACK_PACKAGE_IMAGE = "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=400&q=80";
 const defaultTour = { label: "Choose a tour type", time: "Select inside the booking modal" };
-const PAYMENT_POLICY_NOTICE = "Reservation fees are non-refundable. Guests may cancel while the booking is still pending, but cancellation is no longer allowed once the booking is marked paid or approved by the resort.";
+const PAYMENT_POLICY_NOTICE = "Reservation fees are non-refundable. Guests may cancel while the booking is still pending, but cancellation is no longer allowed once the booking is marked paid or approved by the resort. Approved rebooking keeps the same payment on the new reservation date.";
+const RECEIPT_ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const RECEIPT_MAX_BYTES = 8 * 1024 * 1024;
+const RECEIPT_MIN_BYTES = 12 * 1024;
+const ADDITIONAL_GUEST_RATE = 250;
+const PAYMENT_TYPE_LABELS = {
+  downpayment: "Downpayment",
+  full_payment: "Full Payment",
+};
+
+const analyzeReceiptImage = (file) => new Promise((resolve) => {
+  const url = URL.createObjectURL(file);
+  const image = new Image();
+
+  image.onload = () => {
+    try {
+      const { naturalWidth: width, naturalHeight: height } = image;
+      URL.revokeObjectURL(url);
+
+      if (width < 360 || height < 360) {
+        resolve({ valid: false, reason: "The receipt image is too small to review clearly." });
+        return;
+      }
+
+      if (width > 8000 || height > 8000) {
+        resolve({ valid: false, reason: "The receipt image is too large. Please upload a clearer compressed screenshot." });
+        return;
+      }
+
+      const ratio = width / height;
+      if (ratio > 0.98) {
+        resolve({ valid: false, reason: "Upload a portrait payment receipt screenshot. Landscape images are automatically declined." });
+        return;
+      }
+
+      if (ratio < 0.28) {
+        resolve({ valid: false, reason: "The image shape does not look like a readable payment receipt screenshot." });
+        return;
+      }
+
+      const sampleWidth = 120;
+      const sampleHeight = 120;
+      const canvas = document.createElement("canvas");
+      canvas.width = sampleWidth;
+      canvas.height = sampleHeight;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+
+      if (!context) {
+        resolve({ valid: true });
+        return;
+      }
+
+      context.drawImage(image, 0, 0, sampleWidth, sampleHeight);
+      const { data } = context.getImageData(0, 0, sampleWidth, sampleHeight);
+      const grays = [];
+      let total = 0;
+
+      for (let index = 0; index < data.length; index += 4) {
+        const gray = (data[index] * 0.299) + (data[index + 1] * 0.587) + (data[index + 2] * 0.114);
+        grays.push(gray);
+        total += gray;
+      }
+
+      const mean = total / grays.length;
+      const variance = grays.reduce((sum, gray) => sum + ((gray - mean) ** 2), 0) / grays.length;
+      const contrast = Math.sqrt(variance);
+      let edgePixels = 0;
+
+      for (let y = 1; y < sampleHeight; y += 1) {
+        for (let x = 1; x < sampleWidth; x += 1) {
+          const current = grays[(y * sampleWidth) + x];
+          const left = grays[(y * sampleWidth) + x - 1];
+          const above = grays[((y - 1) * sampleWidth) + x];
+          if (Math.abs(current - left) + Math.abs(current - above) > 32) {
+            edgePixels += 1;
+          }
+        }
+      }
+
+      const edgeDensity = edgePixels / ((sampleWidth - 1) * (sampleHeight - 1));
+
+      if (mean < 18 || mean > 246 || contrast < 10 || edgeDensity < 0.025) {
+        resolve({ valid: false, reason: "The image does not contain enough readable receipt detail." });
+        return;
+      }
+
+      resolve({ valid: true });
+    } catch {
+      URL.revokeObjectURL(url);
+      resolve({ valid: false, reason: "The receipt image could not be inspected." });
+    }
+  };
+
+  image.onerror = () => {
+    URL.revokeObjectURL(url);
+    resolve({ valid: false, reason: "The uploaded file is not a readable receipt image." });
+  };
+
+  image.src = url;
+});
+
+const validateReceiptFile = async (file) => {
+  if (!RECEIPT_ALLOWED_TYPES.has(file.type)) {
+    return { valid: false, reason: "Upload a JPG, PNG, or WebP receipt image only. PDF and document files are not accepted." };
+  }
+
+  if (file.size < RECEIPT_MIN_BYTES) {
+    return { valid: false, reason: "The file is too small to be a readable payment receipt." };
+  }
+
+  if (file.size > RECEIPT_MAX_BYTES) {
+    return { valid: false, reason: "The file is larger than 8 MB. Please upload a compressed receipt image." };
+  }
+
+  return analyzeReceiptImage(file);
+};
 
 export default function BookingForm() {
   const navigate = useNavigate();
@@ -75,8 +190,10 @@ export default function BookingForm() {
   const [bookingComplete, setBookingComplete] = useState(null);
   const [user, setUser] = useState(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [paymentType, setPaymentType] = useState("downpayment");
   const [selectedQrCodeId, setSelectedQrCodeId] = useState("");
   const [receiptUrl, setReceiptUrl] = useState("");
+  const [receiptValidation, setReceiptValidation] = useState(null);
   const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
   const [agreedToRules, setAgreedToRules] = useState(false);
   const [selectedPackageImage, setSelectedPackageImage] = useState("");
@@ -258,6 +375,24 @@ export default function BookingForm() {
   const isSelectedDateFull = selectedDate ? isDateDisabled(selectedDate) : false;
   const isCustomerInfoComplete = Boolean(form.customer_name && form.customer_email && form.customer_phone);
   const displayStep = isBookingModalOpen ? modalStep + 1 : 1;
+  const modalStepDetails = {
+    1: {
+      title: "Booking Details",
+      description: "Confirm the reservation date and fill in your customer details before continuing.",
+    },
+    2: {
+      title: "Review Booking",
+      description: "Double-check your reservation summary before choosing your payment.",
+    },
+    3: {
+      title: "Payment",
+      description: "Choose downpayment or full payment, select your payment method, and upload proof.",
+    },
+    4: {
+      title: "Terms and Conditions",
+      description: "Review and accept the terms before final booking submission.",
+    },
+  };
 
   const handleBookingModalChange = (open) => {
     if (!open && submitting) {
@@ -269,6 +404,12 @@ export default function BookingForm() {
     if (!open) {
       setModalStep(1);
     }
+  };
+
+  const clearReceiptUpload = () => {
+    setReceiptUrl("");
+    setReceiptValidation(null);
+    setAgreedToRules(false);
   };
 
   const handleSubmit = async () => {
@@ -302,6 +443,11 @@ export default function BookingForm() {
       return;
     }
 
+    if (receiptValidation?.status !== "accepted") {
+      toast.error("Please upload a valid receipt image before submitting.");
+      return;
+    }
+
     if (!agreedToRules) {
       toast.error("Please agree to the resort rules and terms before submitting your booking.");
       return;
@@ -312,8 +458,12 @@ export default function BookingForm() {
     try {
       const ref = "KI-" + Date.now().toString(36).toUpperCase();
       const tourType = selectedTour;
-      const selectedPrice = getPackagePriceByTourType(pkg, tourType);
+      const basePrice = getPackagePriceByTourType(pkg, tourType);
+      const additionalGuestCount = Math.max(Number(form.guest_count || 1) - 1, 0);
+      const additionalGuestAmount = additionalGuestCount * ADDITIONAL_GUEST_RATE;
+      const selectedPrice = basePrice + additionalGuestAmount;
       const reservationFee = Number((selectedPrice * 0.15).toFixed(2));
+      const paymentAmountDue = paymentType === "full_payment" ? selectedPrice : reservationFee;
       const selectedQrCode = activeQrCodes.find((entry) => entry.id === selectedQrCodeId);
 
       const booking = await baseClient.entities.Booking.create({
@@ -330,6 +480,9 @@ export default function BookingForm() {
         total_amount: selectedPrice,
         status: "pending",
         payment_status: "pending_verification",
+        payment_type: paymentType,
+        payment_amount_due: paymentAmountDue,
+        payment_mode: selectedQrCode?.label,
         reservation_fee_amount: reservationFee,
         payment_qr_code_id: selectedQrCode?.id,
         payment_qr_code_label: selectedQrCode?.label,
@@ -345,8 +498,9 @@ export default function BookingForm() {
         details: `Booked ${pkg?.name} for ${format(selectedDate, "MMM d, yyyy")}`,
       });
 
-      let emailResult = { sent: false, error: "" };
+      let emailResult = { sent: true, error: "" };
 
+      if (typeof window !== "undefined" && window.__KASA_ENABLE_CLIENT_BOOKING_EMAIL__ === true) {
       try {
         emailResult = await baseClient.integrations.Core.SendEmail({
           to: form.customer_email,
@@ -369,7 +523,7 @@ export default function BookingForm() {
 
     <!-- Status Banner -->
     <div style="background:#fff8e6;border-left:4px solid #f59e0b;padding:14px 32px;font-size:13px;color:#92400e;">
-      ⏳ <strong>Pending Verification</strong> — Our team will verify your 15% reservation payment within 24 hours and send you a confirmation.
+      ⏳ <strong>Pending Verification</strong> — Our team will verify your ${PAYMENT_TYPE_LABELS[paymentType].toLowerCase()} payment within 24 hours and send you a confirmation.
     </div>
 
     <!-- Body -->
@@ -380,7 +534,7 @@ export default function BookingForm() {
       </p>
 
       <div style="background:#fff7ed;border:1px solid #fdba74;border-radius:10px;padding:14px 16px;margin-bottom:24px;font-size:13px;color:#9a3412;line-height:1.7;">
-        <strong>Payment Policy:</strong> Reservation fees are non-refundable. Guests may cancel while the booking is still pending, but cancellation is no longer allowed once the booking is marked paid or approved by the resort.
+        <strong>Payment Policy:</strong> {PAYMENT_POLICY_NOTICE}
       </div>
 
       <!-- Details Table -->
@@ -402,24 +556,40 @@ export default function BookingForm() {
           <td style="padding:12px 16px;font-weight:600;color:#111827;">${format(addDays(selectedDate, 1), "EEEE, MMMM d, yyyy")}</td>
         </tr>` : ''}
         <tr>
-          <td style="padding:12px 16px;color:#6b7280;">Number of Guests</td>
+          <td style="padding:12px 16px;color:#6b7280;">Total Guests</td>
           <td style="padding:12px 16px;font-weight:600;color:#111827;">${form.guest_count} guest(s)</td>
         </tr>
         <tr style="background:#f9f7f4;">
+          <td style="padding:12px 16px;color:#6b7280;">Additional Guests</td>
+          <td style="padding:12px 16px;font-weight:600;color:#111827;">${additionalGuestCount} guest(s) x ₱${ADDITIONAL_GUEST_RATE.toLocaleString()}</td>
+        </tr>
+        <tr>
           <td style="padding:12px 16px;color:#6b7280;">Guest Name</td>
           <td style="padding:12px 16px;font-weight:600;color:#111827;">${form.customer_name}</td>
         </tr>
-        <tr>
+        <tr style="background:#f9f7f4;">
           <td style="padding:12px 16px;color:#6b7280;">Phone</td>
           <td style="padding:12px 16px;font-weight:600;color:#111827;">${form.customer_phone}</td>
         </tr>
-        <tr style="background:#f9f7f4;">
+        <tr>
           <td style="padding:12px 16px;color:#6b7280;">Booking Status</td>
           <td style="padding:12px 16px;"><span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;">Pending Confirmation</span></td>
+        </tr>
+        <tr style="background:#f9f7f4;">
+          <td style="padding:12px 16px;color:#6b7280;">Additional Guest Fee</td>
+          <td style="padding:12px 16px;font-weight:600;color:#111827;">₱${additionalGuestAmount.toLocaleString()} (₱${ADDITIONAL_GUEST_RATE.toLocaleString()} per person)</td>
         </tr>
         <tr>
           <td style="padding:12px 16px;color:#6b7280;">Reservation Fee</td>
           <td style="padding:12px 16px;font-weight:600;color:#111827;">₱${reservationFee.toLocaleString()} (15%)</td>
+        </tr>
+        <tr style="background:#f9f7f4;">
+          <td style="padding:12px 16px;color:#6b7280;">Payment Type</td>
+          <td style="padding:12px 16px;font-weight:600;color:#111827;">${PAYMENT_TYPE_LABELS[paymentType]}</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 16px;color:#6b7280;">Amount for Verification</td>
+          <td style="padding:12px 16px;font-weight:600;color:#111827;">PHP ${paymentAmountDue.toLocaleString()}</td>
         </tr>
         <tr style="background:#f9f7f4;">
           <td style="padding:12px 16px;color:#6b7280;">Payment Channel</td>
@@ -460,17 +630,21 @@ export default function BookingForm() {
           error: emailError?.message || "The booking was saved, but the email notification failed.",
         };
       }
+      }
 
       setBookingComplete({
         ...booking,
         email_sent: Boolean(emailResult?.sent),
         email_error: emailResult?.error || "",
         reservation_fee_amount: reservationFee,
+        payment_type: paymentType,
+        payment_amount_due: paymentAmountDue,
+        payment_mode: selectedQrCode?.label || "",
         payment_qr_code_label: selectedQrCode?.label || "",
       });
 
       if (emailResult?.sent) {
-        toast.success("Booking submitted and email sent.");
+        toast.success("Booking submitted. Email notification will be processed by the resort system.");
       } else {
         toast.warning(emailResult?.error || "Booking submitted, but the email notification was not delivered.");
       }
@@ -498,10 +672,15 @@ export default function BookingForm() {
   }
 
   const tour = selectedTour ? tourTypeLabels[selectedTour] : defaultTour;
-  const displayedPrice = selectedTour
+  const baseDisplayedPrice = selectedTour
     ? getPackagePriceByTourType(pkg, selectedTour)
     : Number(pkg?.price ?? pkg?.day_tour_price ?? 0);
+  const additionalGuestCount = Math.max(Number(form.guest_count || 1) - 1, 0);
+  const additionalGuestAmount = additionalGuestCount * ADDITIONAL_GUEST_RATE;
+  const displayedPrice = baseDisplayedPrice + additionalGuestAmount;
   const reservationFee = Number((displayedPrice * 0.15).toFixed(2));
+  const paymentAmountDue = paymentType === "full_payment" ? displayedPrice : reservationFee;
+  const selectedPaymentQrCode = activeQrCodes.find((entry) => entry.id === selectedQrCodeId);
 
   const handleReceiptUpload = async (event) => {
     const file = event.target.files?.[0];
@@ -510,27 +689,29 @@ export default function BookingForm() {
     }
 
     setIsUploadingReceipt(true);
+    setReceiptUrl("");
+    setReceiptValidation({ status: "checking", message: "Checking if the file looks like a valid receipt..." });
+    setAgreedToRules(false);
 
     try {
-      const { file_url } = await baseClient.integrations.Core.UploadFile({ file });
+      const validation = await validateReceiptFile(file);
+      if (!validation.valid) {
+        setReceiptValidation({ status: "rejected", message: validation.reason });
+        toast.error(`Payment proof rejected: ${validation.reason}`);
+        return;
+      }
+
+      const { file_url } = await baseClient.integrations.Core.UploadFile({ file, purpose: "payment_receipt" });
       setReceiptUrl(file_url);
-      toast.success("Payment proof uploaded.");
+      setReceiptValidation({ status: "accepted", message: "Receipt image passed the automatic file check." });
+      toast.success("Payment receipt uploaded and accepted.");
     } catch (error) {
+      setReceiptValidation({ status: "rejected", message: error?.message || "Unable to upload payment proof." });
       toast.error(error?.message || "Unable to upload payment proof.");
     } finally {
       setIsUploadingReceipt(false);
       event.target.value = "";
     }
-  };
-
-  const handleOpenBookingModal = () => {
-    if (!selectedDate || isSelectedDateFull) {
-      toast.error("Please select an available reservation date.");
-      return;
-    }
-
-    setModalStep(1);
-    setIsBookingModalOpen(true);
   };
 
   const handleDateSelect = (date) => {
@@ -566,7 +747,7 @@ export default function BookingForm() {
               </div>
               <h2 className="font-display text-2xl font-bold text-foreground mb-2">Booking Submitted</h2>
               <p className="text-muted-foreground mb-6">Your reservation has been submitted successfully</p>
-              <div className="bg-muted rounded-xl p-4 mb-6 text-left space-y-2">
+              <div className="mb-6 space-y-2 rounded-lg bg-muted p-4 text-left">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Reference</span>
                   <span className="font-mono font-bold text-primary">{bookingComplete.booking_reference}</span>
@@ -594,8 +775,16 @@ export default function BookingForm() {
                   <span className="font-bold text-primary">₱{Number(bookingComplete.reservation_fee_amount || reservationFee).toLocaleString()} (15%)</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Payment Channel</span>
-                  <span className="font-medium">{bookingComplete.payment_qr_code_label || "QR Payment"}</span>
+                  <span className="text-muted-foreground">Payment Type</span>
+                  <span className="font-medium">{PAYMENT_TYPE_LABELS[bookingComplete.payment_type] || "Downpayment"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Amount Submitted</span>
+                  <span className="font-bold text-primary">₱{Number(bookingComplete.payment_amount_due || reservationFee).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Mode of Payment</span>
+                  <span className="font-medium">{bookingComplete.payment_mode || bookingComplete.payment_qr_code_label || "QR Payment"}</span>
                 </div>
               </div>
               <p className="text-sm text-muted-foreground mb-4">
@@ -612,7 +801,7 @@ export default function BookingForm() {
                 </p>
               ) : null}
 
-              <div className="flex gap-3 mt-4">
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                 <Button variant="outline" className="flex-1" onClick={() => navigate(createPageUrl("MyBookings"))}>
                   My Bookings
                 </Button>
@@ -628,19 +817,19 @@ export default function BookingForm() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1800px] px-3 py-8 sm:px-4 sm:py-10 lg:px-4">
+    <div className="w-full max-w-none px-2 py-6 sm:px-3 lg:px-4">
       <Button variant="ghost" onClick={() => navigate(-1)} className="mb-6 gap-2">
         <ArrowLeft className="h-4 w-4" /> Back
       </Button>
 
       {/* Steps */}
       <div className="mb-8 flex items-center justify-center gap-1.5 sm:gap-2">
-        {[1, 2, 3].map(s => (
+        {[1, 2, 3, 4, 5].map(s => (
           <React.Fragment key={s}>
             <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold sm:h-9 sm:w-9 sm:text-sm ${displayStep >= s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
               {s}
             </div>
-            {s < 3 && <div className={`h-0.5 w-8 sm:w-12 ${displayStep > s ? "bg-primary" : "bg-muted"}`} />}
+            {s < 5 && <div className={`h-0.5 w-8 sm:w-12 ${displayStep > s ? "bg-primary" : "bg-muted"}`} />}
           </React.Fragment>
         ))}
       </div>
@@ -653,6 +842,9 @@ export default function BookingForm() {
                 <img
                   src={selectedPackageImage || packageGalleryImages[0] || FALLBACK_PACKAGE_IMAGE}
                   alt={pkg.name}
+                  loading="eager"
+                  decoding="async"
+                  fetchPriority="high"
                   className="h-full w-full object-cover"
                 />
               </div>
@@ -667,7 +859,13 @@ export default function BookingForm() {
                         className={`overflow-hidden rounded-md border transition ${selectedPackageImage === imageUrl ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-primary/50"}`}
                         title={`View photo ${index + 1}`}
                       >
-                        <img src={imageUrl} alt={`${pkg.name} thumbnail ${index + 1}`} className="h-14 w-20 sm:h-16 sm:w-24 object-cover" />
+                        <img
+                          src={imageUrl}
+                          alt={`${pkg.name} thumbnail ${index + 1}`}
+                          loading="lazy"
+                          decoding="async"
+                          className="h-14 w-20 object-cover sm:h-16 sm:w-24"
+                        />
                       </button>
                     ))}
                   </div>
@@ -704,9 +902,21 @@ export default function BookingForm() {
                     reserved: "bg-destructive/15 text-destructive font-semibold ring-1 ring-destructive/40 line-through",
                   }}
                   classNames={{
+                    months: "flex flex-col sm:flex-row justify-center gap-4",
+                    month: "space-y-5",
+                    caption: "flex justify-center pt-1 relative items-center",
+                    caption_label: "text-lg font-semibold",
+                    nav_button: "h-10 w-10 bg-transparent p-0 opacity-60 hover:opacity-100",
+                    head_cell: "text-muted-foreground rounded-md w-10 sm:w-14 font-normal text-sm",
+                    row: "flex w-full mt-2 sm:mt-3",
+                    cell: "h-10 w-10 sm:h-14 sm:w-14 text-center text-sm sm:text-base p-0 relative [&:has([aria-selected])]:bg-accent [&:has([aria-selected].day-outside)]:bg-accent/50 focus-within:relative focus-within:z-20",
+                    day: "h-9 w-9 sm:h-12 sm:w-12 p-0 font-normal aria-selected:opacity-100 hover:bg-accent hover:text-accent-foreground rounded-lg",
+                    day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
+                    day_today: "bg-accent text-accent-foreground",
+                    day_outside: "day-outside text-muted-foreground opacity-50",
                     day_disabled: "text-muted-foreground opacity-60",
                   }}
-                  className="rounded-xl border"
+                  className="w-full max-w-[32rem] rounded-lg border p-3 sm:p-6"
                 />
               </div>
               <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground">
@@ -716,7 +926,7 @@ export default function BookingForm() {
                 </div>
               </div>
               {selectedDate && (
-                <div className="rounded-xl border border-border bg-muted/50 px-4 py-3 text-center">
+                <div className="rounded-lg border border-border bg-muted/50 px-4 py-3 text-center">
                   <p className="text-sm text-primary font-medium">
                     Selected: {format(selectedDate, "EEEE, MMMM d, yyyy")}
                   </p>
@@ -737,7 +947,7 @@ export default function BookingForm() {
                   </p>
                 </div>
               )}
-              <div className="relative overflow-hidden rounded-3xl border border-primary/15 bg-gradient-to-r from-primary/10 via-background to-secondary/10 px-5 py-5 shadow-sm">
+              <div className="relative overflow-hidden rounded-lg border border-primary/15 bg-gradient-to-r from-primary/10 via-background to-secondary/10 px-5 py-5 shadow-sm">
                 <div className="absolute -right-8 -top-8 h-20 w-20 rounded-full bg-primary/10 blur-2xl" />
                 <div className="absolute -bottom-10 left-6 h-20 w-20 rounded-full bg-secondary/15 blur-2xl" />
                 <div className="relative">
@@ -753,7 +963,7 @@ export default function BookingForm() {
                   </p>
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl border border-border/70 bg-background/85 p-4 backdrop-blur">
+                    <div className="rounded-lg border border-border/70 bg-background/85 p-4 backdrop-blur">
                       <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                         <CalendarCheck className="h-4 w-4 text-primary" />
                         Date first
@@ -762,7 +972,7 @@ export default function BookingForm() {
                         Click an available calendar date to open the guided booking flow instantly.
                       </p>
                     </div>
-                    <div className="rounded-2xl border border-border/70 bg-background/85 p-4 backdrop-blur">
+                    <div className="rounded-lg border border-border/70 bg-background/85 p-4 backdrop-blur">
                       <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                         <ShieldCheck className="h-4 w-4 text-primary" />
                         Important note
@@ -786,23 +996,21 @@ export default function BookingForm() {
             <div className="flex flex-wrap items-start justify-between gap-3 pr-10 sm:items-center sm:pr-8">
               <div>
                 <DialogTitle className="font-display text-xl text-foreground sm:text-2xl">
-                  {modalStep === 1 ? "Booking Details" : "Review Booking"}
+                  {modalStepDetails[modalStep]?.title || "Booking Details"}
                 </DialogTitle>
                 <DialogDescription className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  {modalStep === 1
-                    ? "Confirm the reservation date, fill in your customer details, and review the resort rules before continuing."
-                    : "Double-check your reservation summary and payment before submitting the booking request."}
+                  {modalStepDetails[modalStep]?.description}
                 </DialogDescription>
               </div>
               <div className="flex items-center gap-1.5 sm:gap-2">
-                {[1, 2].map((stepNumber) => {
+                {[1, 2, 3, 4].map((stepNumber) => {
 
                   return (
                     <React.Fragment key={stepNumber}>
                       <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold sm:h-9 sm:w-9 sm:text-sm ${modalStep >= stepNumber ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
                         {stepNumber}
                       </div>
-                      {stepNumber < 2 ? <div className={`h-0.5 w-8 sm:w-10 ${modalStep > stepNumber ? "bg-primary" : "bg-muted"}`} /> : null}
+                      {stepNumber < 4 ? <div className={`h-0.5 w-8 sm:w-10 ${modalStep > stepNumber ? "bg-primary" : "bg-muted"}`} /> : null}
                     </React.Fragment>
                   );
                 })}
@@ -816,7 +1024,7 @@ export default function BookingForm() {
                 <motion.div key="modal-step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                   <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                     <div className="space-y-5">
-                      <div className="rounded-2xl border border-border bg-muted/30 p-5">
+                      <div className="rounded-lg border border-border bg-muted/30 p-5">
                         <h3 className="font-display text-lg font-semibold text-foreground">Reservation Details</h3>
                         <div className="mt-4 space-y-4">
                           <div>
@@ -836,7 +1044,7 @@ export default function BookingForm() {
                             </Select>
                           </div>
 
-                          <div className="rounded-xl border border-border bg-background px-4 py-3 text-sm">
+                          <div className="rounded-lg border border-border bg-background px-4 py-3 text-sm">
                             <div className="flex justify-between gap-4">
                               <span className="text-muted-foreground">Selected date</span>
                               <span className="text-right font-medium text-foreground">{selectedDate && format(selectedDate, "MMM d, yyyy")}</span>
@@ -862,7 +1070,7 @@ export default function BookingForm() {
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-border bg-muted/30 p-5">
+                      <div className="rounded-lg border border-border bg-muted/30 p-5">
                         <h3 className="font-display text-lg font-semibold text-foreground">Customer Information</h3>
                         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                           <div>
@@ -887,24 +1095,24 @@ export default function BookingForm() {
                             </div>
                           </div>
                           <div>
-                            <Label htmlFor="guests">Number of Guests</Label>
+                            <Label htmlFor="guests">Additional Number of Guests</Label>
                             <Select
-                              value={String(form.guest_count)}
-                              onValueChange={(value) => setForm({ ...form, guest_count: Number(value) })}
+                              value={String(additionalGuestCount)}
+                              onValueChange={(value) => setForm({ ...form, guest_count: Number(value) + 1 })}
                             >
                               <SelectTrigger id="guests" className="mt-1">
-                                <SelectValue placeholder="Select guest count" />
+                                <SelectValue placeholder="Select additional guests" />
                               </SelectTrigger>
                               <SelectContent>
-                                {Array.from({ length: pkg.max_guests || 1 }, (_, index) => index + 1).map((count) => (
+                                {Array.from({ length: Math.max(Number(pkg.max_guests || 1) - 1, 0) + 1 }, (_, index) => index).map((count) => (
                                   <SelectItem key={count} value={String(count)}>
-                                    {count} {count === 1 ? "guest" : "guests"}
+                                    {count === 0 ? "No additional guests" : `${count} additional ${count === 1 ? "guest" : "guests"}`}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
                             <p className="mt-1 text-xs text-muted-foreground">
-                              Maximum allowed for this package: {pkg.max_guests || 1} guest{(pkg.max_guests || 1) === 1 ? "" : "s"}
+                              Additional guests are ₱{ADDITIONAL_GUEST_RATE.toLocaleString()} per person. Total guests allowed for this package: {pkg.max_guests || 1}.
                             </p>
                           </div>
                         </div>
@@ -917,7 +1125,7 @@ export default function BookingForm() {
                     </div>
 
                     <div className="space-y-5">
-                      <div className="rounded-2xl border border-border bg-muted p-5">
+                      <div className="rounded-lg border border-border bg-muted p-5">
                         <h3 className="font-display text-lg font-semibold text-foreground">Selected Reservation</h3>
                         <div className="mt-4 space-y-3 text-sm">
                           <div className="flex justify-between gap-4">
@@ -942,17 +1150,33 @@ export default function BookingForm() {
                               <span className="text-right font-medium text-foreground">{format(checkoutDate, "MMM d, yyyy")}</span>
                             </div>
                           ) : null}
-                          <div className="border-t border-border pt-3">
+                          <div className="border-t border-border pt-3 space-y-2">
+                            <div className="flex justify-between gap-4">
+                              <span className="text-muted-foreground">Base Package Price</span>
+                              <span className="text-right font-medium text-foreground">₱{baseDisplayedPrice.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-muted-foreground">Additional Guests</span>
+                              <span className="text-right font-medium text-foreground">{additionalGuestCount} x ₱{ADDITIONAL_GUEST_RATE.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-muted-foreground">Total Guests</span>
+                              <span className="text-right font-medium text-foreground">{form.guest_count}</span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-muted-foreground">Additional Guest Fee</span>
+                              <span className="text-right font-medium text-foreground">₱{additionalGuestAmount.toLocaleString()}</span>
+                            </div>
                             <div className="flex justify-between gap-4 text-base font-semibold text-foreground">
-                              <span>Total Package Price</span>
+                              <span>Total Amount</span>
                               <span className="text-secondary">₱{displayedPrice.toLocaleString()}</span>
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-primary/15 bg-primary/5 p-5 text-sm text-muted-foreground">
-                        The next step will show your booking review and payment upload before submission.
+                      <div className="rounded-lg border border-primary/15 bg-primary/5 p-5 text-sm text-muted-foreground">
+                        The next step will show your booking review before payment.
                       </div>
                     </div>
                   </div>
@@ -963,7 +1187,7 @@ export default function BookingForm() {
                         Back
                       </Button>
                       <Button className="flex-1" disabled={!selectedTour || isSelectedDateFull || !isCustomerInfoComplete} onClick={() => setModalStep(2)}>
-                        Next
+                        Next: Review
                       </Button>
                     </div>
                   </div>
@@ -971,21 +1195,18 @@ export default function BookingForm() {
               )}
 
               {modalStep === 2 && (
-                <motion.div key="modal-step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+                <motion.div key="modal-step-review" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                   <div className="space-y-6">
-                    <div className="bg-muted rounded-2xl p-8 text-center">
+                    <div className="rounded-lg bg-muted p-8 text-center">
                       <CalendarCheck className="h-20 w-20 mx-auto text-primary mb-4" />
                       <h3 className="font-display text-xl font-bold mb-2">Review Your Reservation</h3>
                       <p className="text-muted-foreground text-sm mb-2">
-                        Confirm the details below before submitting your booking request.
+                        Confirm the details below before choosing your payment option.
                       </p>
                       <p className="text-3xl font-bold text-secondary">₱{displayedPrice.toLocaleString()}</p>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Reservation fee due now: ₱{reservationFee.toLocaleString()} (15% of total amount).
-                      </p>
                     </div>
 
-                    <div className="bg-muted rounded-xl p-4 space-y-2 text-sm">
+                    <div className="space-y-2 rounded-lg bg-muted p-4 text-sm">
                       <h4 className="font-semibold text-foreground">Booking Summary</h4>
                       <div className="flex justify-between"><span className="text-muted-foreground">Package</span><span>{pkg.name}</span></div>
                       <div className="flex justify-between"><span className="text-muted-foreground">Tour</span><span>{tour.label}</span></div>
@@ -993,19 +1214,78 @@ export default function BookingForm() {
                       {checkoutDate && (
                         <div className="flex justify-between"><span className="text-muted-foreground">Check-out</span><span>{format(checkoutDate, "MMM d, yyyy")}</span></div>
                       )}
-                      <div className="flex justify-between"><span className="text-muted-foreground">Guests</span><span>{form.guest_count}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">Total Guests</span><span>{form.guest_count}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">Additional Guests</span><span>{additionalGuestCount}</span></div>
                       <div className="flex justify-between"><span className="text-muted-foreground">Customer</span><span>{form.customer_name}</span></div>
                       <div className="border-t border-border my-2" />
+                      <div className="flex justify-between"><span>Base Package Price</span><span>₱{baseDisplayedPrice.toLocaleString()}</span></div>
+                      <div className="flex justify-between"><span>Additional Guest Fee</span><span>₱{additionalGuestAmount.toLocaleString()}</span></div>
                       <div className="flex justify-between"><span>Reservation Fee</span><span className="text-primary font-semibold">₱{reservationFee.toLocaleString()}</span></div>
                       <div className="flex justify-between font-bold text-base"><span>Total</span><span className="text-secondary">₱{displayedPrice.toLocaleString()}</span></div>
                     </div>
 
-                    <div className="space-y-4 rounded-2xl border border-border bg-card p-5">
+                    <div className="sticky bottom-0 mt-6 border-t border-border bg-background/95 pt-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+                      <div className="flex flex-col gap-3 sm:flex-row">
+                        <Button variant="outline" onClick={() => setModalStep(1)}>
+                          Back
+                        </Button>
+                        <Button className="flex-1" onClick={() => setModalStep(3)}>
+                          Next: Payment
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {modalStep === 3 && (
+                <motion.div key="modal-step-payment" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+                  <div className="space-y-6">
+                    <div className="rounded-lg bg-muted p-8 text-center">
+                      <QrCode className="h-20 w-20 mx-auto text-primary mb-4" />
+                      <h3 className="font-display text-xl font-bold mb-2">Choose Your Payment</h3>
+                      <p className="text-muted-foreground text-sm mb-2">
+                        Select downpayment or full payment, choose a payment method, and upload your receipt.
+                      </p>
+                      <p className="text-3xl font-bold text-secondary">₱{displayedPrice.toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Amount to pay now: ₱{paymentAmountDue.toLocaleString()} ({PAYMENT_TYPE_LABELS[paymentType]}).
+                      </p>
+                    </div>
+
+                    <div className="space-y-4 rounded-lg border border-border bg-card p-5">
                       <div>
                         <h4 className="font-semibold text-foreground">Reservation Payment</h4>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          Select a QR code and upload proof of your 15% reservation payment before submitting.
+                          Choose whether to pay the downpayment or full amount, then select your payment mode and upload proof.
                         </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {Object.entries(PAYMENT_TYPE_LABELS).map(([value, label]) => {
+                          const isSelected = paymentType === value;
+                          const amount = value === "full_payment" ? displayedPrice : reservationFee;
+
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => {
+                                setPaymentType(value);
+                                clearReceiptUpload();
+                              }}
+                              className={`rounded-lg border px-4 py-3 text-left transition-all ${isSelected ? "border-primary bg-primary/5 ring-2 ring-primary/15" : "border-border hover:border-primary/40"}`}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="font-semibold text-foreground">{label}</span>
+                                {isSelected ? <CheckCircle2 className="h-4 w-4 text-primary" /> : null}
+                              </div>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                Pay ₱{amount.toLocaleString()}{value === "downpayment" ? " now, 15% of total amount." : " now, the full booking amount."}
+                              </p>
+                            </button>
+                          );
+                        })}
                       </div>
 
                       {isLoadingQrCodes ? (
@@ -1013,40 +1293,61 @@ export default function BookingForm() {
                           <Loader2 className="h-6 w-6 animate-spin text-primary" />
                         </div>
                       ) : activeQrCodes.length === 0 ? (
-                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
                           No active payment QR code is available right now. Please contact the resort before submitting your reservation.
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                          {activeQrCodes.map((code) => {
-                            const isSelected = code.id === selectedQrCodeId;
+                        <div className="space-y-3">
+                          <div>
+                            <Label htmlFor="payment-mode">Mode of Payment</Label>
+                            <Select
+                              value={selectedQrCodeId}
+                              onValueChange={(value) => {
+                                setSelectedQrCodeId(value);
+                                clearReceiptUpload();
+                              }}
+                            >
+                              <SelectTrigger id="payment-mode" className="mt-1">
+                                <SelectValue placeholder="Select payment mode" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {activeQrCodes.map((code) => (
+                                  <SelectItem key={code.id} value={code.id}>
+                                    {code.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
 
-                            return (
-                              <button
-                                key={code.id}
-                                type="button"
-                                onClick={() => setSelectedQrCodeId(code.id)}
-                                className={`overflow-hidden rounded-2xl border text-left transition-all ${isSelected ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/40"}`}
-                              >
+                          {selectedPaymentQrCode ? (
+                            <div className="overflow-hidden rounded-lg border border-primary/30 bg-card">
+                              <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr]">
                                 <div className="bg-white p-4">
-                                  <img src={code.image_url} alt={code.label} className="h-40 w-full object-contain" />
+                                  <img
+                                    src={selectedPaymentQrCode.image_url}
+                                    alt={selectedPaymentQrCode.label}
+                                    loading="lazy"
+                                    decoding="async"
+                                    className="h-40 w-full object-contain"
+                                  />
                                 </div>
-                                <div className="space-y-1 border-t border-border bg-muted/30 p-4 text-sm">
-                                  <p className="font-semibold text-foreground">{code.label}</p>
-                                  <p className="text-muted-foreground">{code.account_name || "Account name not set"}</p>
-                                  <p className="text-muted-foreground">{code.account_number || "Account number not set"}</p>
-                                  {code.instructions ? <p className="pt-1 text-xs text-muted-foreground">{code.instructions}</p> : null}
+                                <div className="space-y-1 border-t border-border bg-muted/30 p-4 text-sm sm:border-l sm:border-t-0">
+                                  <p className="font-semibold text-foreground">{selectedPaymentQrCode.label}</p>
+                                  <p className="text-muted-foreground">{selectedPaymentQrCode.account_name || "Account name not set"}</p>
+                                  <p className="text-muted-foreground">{selectedPaymentQrCode.account_number || "Account number not set"}</p>
+                                  {selectedPaymentQrCode.instructions ? <p className="pt-1 text-xs text-muted-foreground">{selectedPaymentQrCode.instructions}</p> : null}
                                 </div>
-                              </button>
-                            );
-                          })}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       )}
 
-                      <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+                      <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
                         <div className="flex items-center justify-between gap-4">
-                          <span className="text-muted-foreground">Required reservation fee</span>
-                          <span className="font-bold text-primary">₱{reservationFee.toLocaleString()}</span>
+                          <span className="text-muted-foreground">Amount to pay now</span>
+                          <span className="font-bold text-primary">₱{paymentAmountDue.toLocaleString()}</span>
                         </div>
                       </div>
 
@@ -1055,14 +1356,30 @@ export default function BookingForm() {
                         <div className="mt-2 space-y-3">
                           <label className="flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
                             {isUploadingReceipt ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                            <span>{isUploadingReceipt ? "Uploading payment proof..." : "Upload receipt or screenshot"}</span>
-                            <input type="file" accept="image/*,.pdf" className="hidden" onChange={handleReceiptUpload} disabled={isUploadingReceipt} />
+                            <span>{isUploadingReceipt ? "Checking receipt..." : "Upload portrait receipt image"}</span>
+                            <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleReceiptUpload} disabled={isUploadingReceipt} />
                           </label>
+                          <p className="text-xs text-muted-foreground">
+                            JPG, PNG, or WebP portrait receipt screenshots only. Non-receipt files are rejected automatically.
+                          </p>
+                          {receiptValidation?.status === "checking" ? (
+                            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 p-3 text-sm text-muted-foreground">
+                              <Loader2 className="h-4 w-4 animate-spin" /> {receiptValidation.message}
+                            </div>
+                          ) : null}
+                          {receiptValidation?.status === "rejected" ? (
+                            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                              Automatically declined: {receiptValidation.message}
+                            </div>
+                          ) : null}
                           {receiptUrl ? (
-                            <div className="rounded-xl border border-border bg-muted/20 p-3 text-sm">
+                            <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
                               <div className="flex items-center gap-2 text-primary">
-                                <CheckCircle2 className="h-4 w-4" /> Payment proof uploaded successfully.
+                                <CheckCircle2 className="h-4 w-4" /> Receipt accepted for admin verification.
                               </div>
+                              {receiptValidation?.message ? (
+                                <p className="mt-1 text-xs text-muted-foreground">{receiptValidation.message}</p>
+                              ) : null}
                               <a href={receiptUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-2 text-sm text-primary underline-offset-4 hover:underline">
                                 <QrCode className="h-4 w-4" /> View uploaded proof
                               </a>
@@ -1073,38 +1390,113 @@ export default function BookingForm() {
                     </div>
 
                     <div className="sticky bottom-0 border-t border-border bg-background/95 pt-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-                      <div className="mb-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-900">
-                        {PAYMENT_POLICY_NOTICE}
-                      </div>
 
-                      <div className="mb-4 rounded-2xl border border-border bg-muted/20 p-4">
-                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                          <input
-                            type="checkbox"
-                            checked={agreedToRules}
-                            onChange={(event) => setAgreedToRules(event.target.checked)}
-                            className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
-                          />
+                      <div className="mb-4 rounded-lg border border-border bg-muted/20 p-4">
+                        <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
                           <span>
-                            I agree to {" "}
-                            <button
-                              type="button"
-                              onClick={() => setIsPolicyDialogOpen(true)}
-                              className="font-medium text-primary underline underline-offset-4 transition-colors hover:text-primary/80"
-                            >
-                              terms and conditions and resort rules
-                            </button>
+                            {receiptValidation?.status === "accepted"
+                              ? "Payment receipt accepted. Continue to terms and conditions."
+                              : "Upload an accepted payment receipt before continuing."}
+                          </span>
+                          <span className="flex items-center gap-2">
+                            {receiptValidation?.status === "accepted" ? <CheckCircle2 className="h-4 w-4 text-primary" /> : null}
                           </span>
                         </div>
                       </div>
 
                       <div className="flex gap-3">
-                        <Button variant="outline" onClick={() => setModalStep(1)}>
+                        <Button variant="outline" onClick={() => setModalStep(2)}>
                           Back
                         </Button>
-                        <Button className="flex-1" onClick={handleSubmit} disabled={submitting || isUploadingReceipt || !activeQrCodes.length || !selectedQrCodeId || !receiptUrl || !agreedToRules}>
+                        <Button className="flex-1" onClick={() => setModalStep(4)} disabled={isUploadingReceipt || !activeQrCodes.length || !selectedQrCodeId || !receiptUrl || receiptValidation?.status !== "accepted"}>
+                          Next: Terms
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {modalStep === 4 && (
+                <motion.div key="modal-step-terms" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+                  <div className="space-y-5">
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm leading-6 text-amber-900">
+                      <p className="font-semibold">Payment Policy</p>
+                      <p className="mt-1">{PAYMENT_POLICY_NOTICE}</p>
+                    </div>
+
+                    <div className="rounded-lg border border-border bg-card p-5">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <h3 className="font-display text-lg font-semibold text-foreground">{termsTitle}</h3>
+                          <p className="mt-1 text-sm leading-6 text-muted-foreground">{termsSummary}</p>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setIsPolicyDialogOpen(true)}>
+                          Read Full Terms
+                        </Button>
+                      </div>
+
+                      <div className="mt-5 max-h-[36vh] space-y-5 overflow-y-auto rounded-lg border border-border bg-muted/20 p-4 text-sm leading-7 text-muted-foreground">
+                        {termsSections.length ? (
+                          termsSections.map((section, index) => {
+                            const [heading, ...bodyLines] = section.split("\n");
+                            const hasBody = bodyLines.some((line) => line.trim());
+
+                            return (
+                              <div key={`${heading}-${index}`} className="space-y-2">
+                                <p className="font-semibold uppercase tracking-[0.08em] text-foreground">
+                                  {heading}
+                                </p>
+                                {hasBody ? (
+                                  <div className="space-y-2">
+                                    {bodyLines.filter((line) => line.trim()).map((line, lineIndex) => (
+                                      <p key={`${heading}-${lineIndex}`}>{line}</p>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p>No terms and conditions are configured yet.</p>
+                        )}
+
+                        <div className="border-t border-border pt-5">
+                          <p className="font-semibold uppercase tracking-[0.08em] text-foreground">Resort Rules</p>
+                          <div className="mt-3 space-y-4">
+                            {rules.map((rule, index) => (
+                              <div key={rule.title}>
+                                <p className="font-medium text-foreground">{index + 1}. {rule.title}</p>
+                                <p className="mt-1">{rule.description}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="sticky bottom-0 mt-6 border-t border-border bg-background/95 pt-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+                      <div className="mb-4 rounded-lg border border-border bg-muted/20 p-4">
+                        <label className="flex items-start gap-3 text-sm text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={agreedToRules}
+                            onChange={(event) => setAgreedToRules(event.target.checked)}
+                            className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                          />
+                          <span>
+                            I have read and agree to the terms and conditions, payment policy, and resort rules.
+                          </span>
+                        </label>
+                      </div>
+
+                      <div className="flex flex-col gap-3 sm:flex-row">
+                        <Button variant="outline" onClick={() => setModalStep(3)} disabled={submitting}>
+                          Back
+                        </Button>
+                        <Button className="flex-1" onClick={handleSubmit} disabled={submitting || isUploadingReceipt || !activeQrCodes.length || !selectedQrCodeId || !receiptUrl || receiptValidation?.status !== "accepted" || !agreedToRules}>
                           {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-                          {submitting ? "Processing..." : "Submit Booking"}
+                          {submitting ? "Processing Booking..." : "Submit Booking"}
                         </Button>
                       </div>
                     </div>
@@ -1127,7 +1519,7 @@ export default function BookingForm() {
 
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
             <div className="space-y-5 text-sm leading-7 text-muted-foreground">
-              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-900">
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-amber-900">
                 {PAYMENT_POLICY_NOTICE}
               </div>
 
@@ -1165,7 +1557,7 @@ export default function BookingForm() {
             </div>
           </div>
 
-          <div className="sticky bottom-0 flex gap-3 border-t border-border bg-background px-6 py-4">
+          <div className="sticky bottom-0 flex flex-col gap-3 border-t border-border bg-background px-6 py-4 sm:flex-row">
             <Button className="flex-1" onClick={handleAcceptPolicy}>
               I Agree
             </Button>

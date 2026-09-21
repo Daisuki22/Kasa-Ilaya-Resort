@@ -3,9 +3,22 @@ import { baseClient } from "@/api/baseClient";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  CalendarCheck,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Loader2,
+  Moon,
+  Package,
+  Sparkles,
+  Sun,
+  Users,
+} from "lucide-react";
 import PackageCard from "@/components/packages/PackageCard";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
+import { getPageBannerImages } from "@/lib/pageBannerImages";
 
 const MAX_BOOKINGS_PER_SLOT = 1;
 const tourTypeOrder = {
@@ -23,6 +36,27 @@ const sortPackagesForDisplay = (packages) =>
 
     return (tourTypeOrder[left.tour_type] ?? 99) - (tourTypeOrder[right.tour_type] ?? 99);
   });
+
+const dedupePackagesById = (packages) => {
+  const packageMap = new Map();
+
+  packages.forEach((pkg) => {
+    if (!pkg?.id) {
+      return;
+    }
+
+    packageMap.set(pkg.id, pkg);
+  });
+
+  return [...packageMap.values()];
+};
+
+const filterOptions = [
+  { value: "all", label: "All Packages", icon: Package },
+  { value: "day_tour", label: "Day Tour", icon: Sun },
+  { value: "night_tour", label: "Night Tour", icon: Moon },
+  { value: "22_hours", label: "22 Hours", icon: Clock },
+];
 
 export default function Packages() {
   const [tourFilter, setTourFilter] = useState("all");
@@ -52,19 +86,13 @@ export default function Packages() {
     refetchInterval: 15000,
   });
 
-  const filtered = sortPackagesForDisplay(packages);
-  const packagesBannerImages = useMemo(() => {
-    const images = Array.isArray(siteSettings?.packages_banner_images)
-      ? siteSettings.packages_banner_images.filter(Boolean)
-      : [];
-
-    if (images.length > 0) {
-      return images;
-    }
-
-    return [siteSettings?.packages_banner_url || siteSettings?.hero_image_url || "img/Logo.png"];
-  }, [siteSettings?.packages_banner_images, siteSettings?.packages_banner_url, siteSettings?.hero_image_url]);
+  const filtered = sortPackagesForDisplay(dedupePackagesById(packages));
+  const packagesBannerImages = useMemo(
+    () => getPageBannerImages(siteSettings),
+    [siteSettings]
+  );
   const showBannerControls = packagesBannerImages.length > 1;
+  const activeBannerImage = packagesBannerImages[activeBannerIndex] || packagesBannerImages[0];
 
   const goToBannerSlide = (index) => {
     setActiveBannerIndex(index);
@@ -88,6 +116,9 @@ export default function Packages() {
     return acc;
   }, {});
 
+  const availableToday = filtered.filter((pkg) => (liveAvailability[pkg.id] || 0) < MAX_BOOKINGS_PER_SLOT).length;
+  const maxGuests = filtered.reduce((sum, pkg) => sum + Number(pkg.max_guests || 0), 0);
+
   useEffect(() => {
     setActiveBannerIndex(0);
   }, [packagesBannerImages.length]);
@@ -99,7 +130,7 @@ export default function Packages() {
 
     const intervalId = window.setInterval(() => {
       setActiveBannerIndex((current) => (current + 1) % packagesBannerImages.length);
-    }, 4500);
+    }, 9000);
 
     return () => window.clearInterval(intervalId);
   }, [packagesBannerImages.length]);
@@ -113,41 +144,28 @@ export default function Packages() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
-      <div className="text-center mb-10">
-        <span className="text-secondary font-medium text-sm tracking-wider uppercase">Choose Your Experience</span>
-        <h1 className="font-display text-3xl sm:text-4xl font-bold text-foreground mt-2">Our Packages</h1>
-        <p className="text-muted-foreground mt-3 max-w-xl mx-auto">
-          Select from our carefully curated resort experiences and preview pricing by tour type
-        </p>
-      </div>
-
-      <div className="relative mb-10 h-72 overflow-hidden rounded-3xl border border-primary/15 shadow-sm sm:h-80 lg:h-[26rem] xl:h-[30rem]">
+    <div className="bg-background">
+      <section className="relative min-h-[34rem] overflow-hidden bg-foreground text-white lg:min-h-[38rem]">
         <div className="absolute inset-0">
-          <div
-            className="flex h-full w-full transition-transform duration-700 ease-in-out"
-            style={{ transform: `translateX(-${activeBannerIndex * 100}%)` }}
-          >
-            {packagesBannerImages.map((imageUrl, index) => (
-              <img
-                key={`${imageUrl}-${index}`}
-                src={imageUrl}
-                alt={`Packages banner ${index + 1}`}
-                className="h-full w-full flex-none object-cover"
-              />
-            ))}
-          </div>
-          <div className="absolute inset-0 bg-black/15" />
+          <img
+            key={`${activeBannerImage}-${activeBannerIndex}`}
+            src={activeBannerImage}
+            alt={`Kasa Ilaya resort package banner ${activeBannerIndex + 1}`}
+            loading={activeBannerIndex === 0 ? "eager" : "lazy"}
+            decoding="async"
+            fetchPriority={activeBannerIndex === 0 ? "high" : "auto"}
+            className="h-full w-full object-cover"
+          />
+          <div className="absolute inset-0 bg-black/55" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/45 to-transparent" />
         </div>
-        <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-primary/20 blur-2xl" />
-        <div className="absolute -bottom-12 left-8 h-24 w-24 rounded-full bg-secondary/20 blur-2xl" />
 
         {showBannerControls ? (
           <>
             <button
               type="button"
               onClick={showPreviousBanner}
-              className="absolute left-4 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white backdrop-blur-sm transition hover:bg-black/55"
+              className="absolute left-4 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/25 bg-black/35 text-white backdrop-blur-sm transition hover:bg-black/55 sm:flex"
               aria-label="Show previous packages banner image"
             >
               <ChevronLeft className="h-5 w-5" />
@@ -155,11 +173,47 @@ export default function Packages() {
             <button
               type="button"
               onClick={showNextBanner}
-              className="absolute right-4 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white backdrop-blur-sm transition hover:bg-black/55"
+              className="absolute right-4 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/25 bg-black/35 text-white backdrop-blur-sm transition hover:bg-black/55 sm:flex"
               aria-label="Show next packages banner image"
             >
               <ChevronRight className="h-5 w-5" />
             </button>
+          </>
+        ) : null}
+
+        <div className="relative flex min-h-[34rem] w-full max-w-none flex-col justify-end px-2 pb-10 pt-20 sm:px-3 lg:min-h-[38rem] lg:px-4 lg:pb-14">
+          <div className="max-w-3xl">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur">
+              <Sparkles className="h-4 w-4" />
+              Choose your resort experience
+            </div>
+            <h1 className="font-display text-4xl font-bold leading-tight text-white sm:text-5xl lg:text-6xl">
+              Packages designed for day tours, overnight stays, and private gatherings
+            </h1>
+            <p className="mt-5 max-w-2xl text-base leading-8 text-white/80 sm:text-lg">
+              Compare resort options, preview inclusions, and choose the schedule that fits your family, friends, or event.
+            </p>
+          </div>
+
+          <div className="mt-10 grid gap-4 border-t border-white/20 pt-5 sm:grid-cols-3">
+            {[
+              { label: "Active packages", value: filtered.length, icon: Package },
+              { label: "Available today", value: availableToday, icon: CalendarCheck },
+              { label: "Guest capacity", value: maxGuests || "Flexible", icon: Users },
+            ].map(({ label, value, icon: Icon }) => (
+              <div key={label} className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/10">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-2xl font-semibold leading-none text-white">{value}</p>
+                  <p className="mt-1 text-sm text-white/72">{label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {showBannerControls ? (
             <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-2 backdrop-blur-sm">
               {packagesBannerImages.map((_, index) => (
                 <button
@@ -171,45 +225,68 @@ export default function Packages() {
                 />
               ))}
             </div>
-          </>
-        ) : null}
-      </div>
+          ) : null}
+        </div>
+      </section>
 
-      <div className="flex justify-center mb-8">
-        <Tabs value={tourFilter} onValueChange={setTourFilter}>
-          <TabsList className="bg-muted">
-            <TabsTrigger value="all">All Packages</TabsTrigger>
-            <TabsTrigger value="day_tour">☀️ Day Tour</TabsTrigger>
-            <TabsTrigger value="night_tour">🌙 Night Tour</TabsTrigger>
-            <TabsTrigger value="22_hours">⏰ 22 Hours</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
+      <section className="border-b border-border bg-card">
+        <div className="w-full max-w-none px-2 py-6 sm:px-3 lg:px-4">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <span className="text-sm font-semibold uppercase tracking-wider text-secondary">Package Finder</span>
+              <h2 className="mt-2 font-display text-2xl font-bold text-foreground">Select your preferred tour type</h2>
+            </div>
+            <Tabs value={tourFilter} onValueChange={setTourFilter}>
+              <TabsList className="grid h-auto w-full grid-cols-2 gap-1 bg-muted p-1 sm:w-auto sm:grid-cols-4">
+                {filterOptions.map(({ value, label, icon: Icon }) => (
+                  <TabsTrigger key={value} value={value} className="gap-2 px-3 py-2">
+                    <Icon className="h-4 w-4" />
+                    {label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </div>
+        </div>
+      </section>
 
-      {isLoading ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <section className="w-full max-w-none px-2 py-8 sm:px-3 lg:px-4 lg:py-10">
+        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="font-display text-3xl font-bold text-foreground">Available Packages</h2>
+            <p className="mt-2 text-muted-foreground">
+              Showing {filtered.length} package{filtered.length === 1 ? "" : "s"} with live reservation status.
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => setTourFilter("all")}>Reset filters</Button>
         </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-20 text-muted-foreground">
-          <p>No packages available yet. Check back soon!</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filtered.map((pkg, i) => (
-            <PackageCard
-              key={pkg.id}
-              pkg={pkg}
-              index={i}
-              selectedTour={tourFilter === 'all' ? '' : tourFilter}
-              liveAvailability={{
-                bookedToday: liveAvailability[pkg.id] || 0,
-                maxSlots: MAX_BOOKINGS_PER_SLOT,
-              }}
-            />
-          ))}
-        </div>
-      )}
+
+        {isLoading ? (
+          <div className="flex justify-center py-20">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border bg-card py-20 text-center text-muted-foreground">
+            <Package className="mx-auto mb-4 h-12 w-12 text-muted-foreground/50" />
+            <p>No packages available yet. Check back soon!</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {filtered.map((pkg, i) => (
+              <PackageCard
+                key={pkg.id}
+                pkg={pkg}
+                index={i}
+                selectedTour={tourFilter === "all" ? "" : tourFilter}
+                liveAvailability={{
+                  bookedToday: liveAvailability[pkg.id] || 0,
+                  maxSlots: MAX_BOOKINGS_PER_SLOT,
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

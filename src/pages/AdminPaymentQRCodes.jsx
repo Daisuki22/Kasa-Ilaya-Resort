@@ -164,24 +164,18 @@ export default function AdminPaymentQRCodes() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
+    <div className="w-full max-w-none px-2 py-6 sm:px-3 lg:px-4">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold text-foreground">Manage Payment QR Codes</h1>
           <p className="mt-1 text-muted-foreground">Upload and manage up to 3 QR codes for reservation fee payments.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => { setEditingCode(null); setFormOpen(true); }} className="gap-2" disabled={!canAddMore}>
+          <Button onClick={() => { setEditingCode(null); setFormOpen(true); }} className="w-full gap-2 sm:w-auto" disabled={!canAddMore}>
             <ImagePlus className="h-4 w-4" /> Add QR Code
           </Button>
         </div>
       </div>
-
-      {!canAddMore ? (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          You already have 3 active QR codes configured. Archive one first if you want to add another.
-        </div>
-      ) : null}
 
       {isLoading ? (
         <div className="flex justify-center py-20">

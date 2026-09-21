@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Mail } from 'lucide-react';
 import { baseClient } from '@/api/baseClient';
@@ -8,29 +8,34 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import CaptchaGate from '@/components/auth/CaptchaGate';
 
 export default function ForgotPassword() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState(searchParams.get('email') || '');
-  const [resetUrl, setResetUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const resetPageUrl = useMemo(() => `${window.location.origin}${createPageUrl('ResetPassword')}`, []);
+  const [captchaVerified, setCaptchaVerified] = useState(false);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setIsSubmitting(true);
 
     try {
-      const response = await baseClient.auth.forgotPassword({ email, reset_page_url: resetPageUrl });
-      setResetUrl(response.reset_url || '');
+      const response = await baseClient.auth.forgotPassword({
+        email,
+      });
 
       if (response.mail_sent === false) {
-        toast.warning(response.mail_error || 'Reset link created, but the email could not be delivered.');
+        toast.error('Reset code was created, but email delivery failed. Please check the email service settings.');
       } else {
-        toast.success('If the email exists, a reset link has been prepared.');
+        toast.success('If the account exists, a reset code has been sent.');
+        const params = new URLSearchParams({ method: 'email', email });
+        navigate(`${createPageUrl('ResetPassword')}?${params.toString()}`);
       }
     } catch (error) {
-      toast.error(error.message || 'Unable to create reset link.');
+      toast.error(error.message || 'Unable to send reset code.');
+      setCaptchaVerified(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -44,27 +49,25 @@ export default function ForgotPassword() {
             <Mail className="h-5 w-5" />
           </div>
           <CardTitle>Forgot password</CardTitle>
-          <CardDescription>Enter your email address and the system will generate a password reset link.</CardDescription>
+          <CardDescription>Enter your email and we will send a password reset code.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <div className="space-y-2">
-              <Label htmlFor="forgot-email">Email</Label>
-              <Input id="forgot-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-            </div>
-            <Button className="w-full" disabled={isSubmitting} type="submit">Send reset link</Button>
-          </form>
-
-          {resetUrl ? (
-            <div className="mt-6 rounded-2xl border bg-muted/30 p-4 text-sm">
-              <p className="font-medium text-foreground">Development reset link</p>
-              <p className="mt-2 break-all text-muted-foreground">{resetUrl}</p>
-              <a className="mt-3 inline-block text-primary hover:underline" href={resetUrl}>Open reset page</a>
-            </div>
-          ) : null}
+          {!captchaVerified ? (
+            <CaptchaGate purpose="reset" onVerified={() => setCaptchaVerified(true)} />
+          ) : (
+            <form className="space-y-4" onSubmit={handleSubmit}>
+              <div className="space-y-2">
+                <Label htmlFor="forgot-email">Email</Label>
+                <Input id="forgot-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+              </div>
+            <Button className="w-full" disabled={isSubmitting} type="submit">
+              {isSubmitting ? 'Sending code...' : 'Send reset code'}
+            </Button>
+            </form>
+          )}
 
           <div className="mt-6 text-sm text-muted-foreground">
-            <Link className="text-primary hover:underline" to={createPageUrl('AdminDashboard')}>Back to sign in</Link>
+            <Link className="text-primary hover:underline" to={createPageUrl('Login')}>Back to sign in</Link>
           </div>
         </CardContent>
       </Card>

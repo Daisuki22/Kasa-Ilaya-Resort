@@ -1,0 +1,10 @@
+api/config.local.php
+node_modules/
+dist/
+tmp-responsive/
+deploy/infinityfree-handoff/chrome-profile/
+deploy/infinityfree-handoff/chrome-profile2/
+deploy/infinityfree-handoff/kasa-ilaya-htdocs.zip
+vite-dev*.log
+npm-debug.log
+api/runtime/sessions/
