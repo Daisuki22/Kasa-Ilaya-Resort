@@ -8,3 +8,4 @@ deploy/infinityfree-handoff/kasa-ilaya-htdocs.zip
 vite-dev*.log
 npm-debug.log
 api/runtime/sessions/
+.vercel/
