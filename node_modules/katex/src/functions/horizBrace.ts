@@ -47,23 +47,21 @@ export const htmlBuilder: HtmlBuilderSupSub<"horizBrace"> = (grp, options) => {
             children: [
                 {type: "elem", elem: body},
                 {type: "kern", size: 0.1},
-                {type: "elem", elem: braceBody},
+                {type: "elem", elem: braceBody,
+                    wrapperClasses: ["svg-align"]},
             ],
         }, options);
-        // TODO(ts): Replace this with passing "svg-align" into makeVList.
-        (vlist as any).children[0].children[0].children[1].classes.push("svg-align");
     } else {
         vlist = makeVList({
             positionType: "bottom",
             positionData: body.depth + 0.1 + braceBody.height,
             children: [
-                {type: "elem", elem: braceBody},
+                {type: "elem", elem: braceBody,
+                    wrapperClasses: ["svg-align"]},
                 {type: "kern", size: 0.1},
                 {type: "elem", elem: body},
             ],
         }, options);
-        // TODO(ts): Replace this with passing "svg-align" into makeVList.
-        (vlist as any).children[0].children[0].children[0].classes.push("svg-align");
     }
 
     if (supSubGroup) {
@@ -77,7 +75,7 @@ export const htmlBuilder: HtmlBuilderSupSub<"horizBrace"> = (grp, options) => {
         //    equation           eqn                 eqn
 
         const vSpan = makeSpan(
-            ["mord", (group.isOver ? "mover" : "munder")],
+            ["minner", (group.isOver ? "mover" : "munder")],
             [vlist], options);
 
         if (group.isOver) {
@@ -104,7 +102,7 @@ export const htmlBuilder: HtmlBuilderSupSub<"horizBrace"> = (grp, options) => {
     }
 
     return makeSpan(
-        ["mord", (group.isOver ? "mover" : "munder")], [vlist], options);
+        ["minner", (group.isOver ? "mover" : "munder")], [vlist], options);
 };
 
 const mathmlBuilder: MathMLBuilder<"horizBrace"> = (group, options) => {
@@ -118,7 +116,7 @@ const mathmlBuilder: MathMLBuilder<"horizBrace"> = (group, options) => {
 // Horizontal stretchy braces
 defineFunction({
     type: "horizBrace",
-    names: ["\\overbrace", "\\underbrace"],
+    names: ["\\overbrace", "\\underbrace", "\\overbracket", "\\underbracket"],
     props: {
         numArgs: 1,
     },
@@ -127,7 +125,7 @@ defineFunction({
             type: "horizBrace",
             mode: parser.mode,
             label: funcName,
-            isOver: /^\\over/.test(funcName),
+            isOver: funcName.includes("\\over"),
             base: args[0],
         };
     },

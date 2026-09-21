@@ -26,6 +26,8 @@ const stretchyCodePoint: Record<string, string> = {
     xrightarrow: "\u2192",
     underbrace: "\u23df",
     overbrace: "\u23de",
+    underbracket: "\u23b5",
+    overbracket: "\u23b4",
     overgroup: "\u23e0",
     undergroup: "\u23e1",
     overleftrightarrow: "\u2194",
@@ -94,18 +96,6 @@ export const stretchyMathML = function(label: string): MathNode {
 //    Some functions, such as \cancel, need to vary their aspect ratio. These
 //    functions do not get the overflow SVG treatment.
 
-// Second Brush Stroke
-//    Low resolution monitors struggle to display images in fine detail.
-//    So browsers apply anti-aliasing. A long straight arrow shaft therefore
-//    will sometimes appear as if it has a blurred edge.
-
-//    To mitigate this, these SVG files contain a second "brush-stroke" on the
-//    arrow shafts. That is, a second long thin rectangular SVG path has been
-//    written directly on top of each arrow shaft. This reinforcement causes
-//    some of the screen pixels to display as black instead of the anti-aliased
-//    gray pixel that a  single path would generate. So we get arrow shafts
-//    whose edges appear to be sharper.
-
 // In the katexImagesData object just below, the dimensions all
 // correspond to path geometry inside the relevant SVG.
 // For example, \overrightarrow uses the same arrowhead as glyph U+2192
@@ -113,9 +103,9 @@ export const stretchyMathML = function(label: string): MathNode {
 // That is, inside the font, that arrowhead is 522 units tall, which
 // corresponds to 0.522 em inside the document.
 
-const katexImagesData: {
-    [key: string]: ([string[], number, number] | [[string], number, number, string])
-} = {
+type SvgData = [string[], number, number, string?];
+
+const katexImagesData: {[key: string]: SvgData} = {
                    //   path(s), minWidth, height, align
     overrightarrow: [["rightarrow"], 0.888, 522, "xMaxYMin"],
     overleftarrow: [["leftarrow"], 0.888, 522, "xMinYMin"],
@@ -153,6 +143,8 @@ const katexImagesData: {
     xhookrightarrow: [["lefthook", "rightarrow"], 1.08, 522],
     overlinesegment: [["leftlinesegment", "rightlinesegment"], 0.888, 522],
     underlinesegment: [["leftlinesegment", "rightlinesegment"], 0.888, 522],
+    overbracket: [["leftbracketover", "rightbracketover"], 1.6, 440],
+    underbracket: [["leftbracketunder", "rightbracketunder"], 1.6, 410],
     overgroup: [["leftgroup", "rightgroup"], 0.888, 342],
     undergroup: [["leftgroupunder", "rightgroupunder"], 0.888, 342],
     xmapsto: [["leftmapsto", "rightarrow"], 1.5, 522],
@@ -185,15 +177,11 @@ export const stretchySvg = function(
     } {
         let viewBoxWidth = 400000;  // default
         const label = group.label.slice(1);
-        if (wideAccentLabels.has(label)) {
-            // Each type in the `if` statement corresponds to one of the ParseNode
-            // types below. This narrowing is required to access `grp.base`.
-            // TODO(ts)
-            const grp = group as ParseNode<"accent"> | ParseNode<"accentUnder">;
+        if (wideAccentLabels.has(label) && 'base' in group) {
             // There are four SVG images available for each function.
             // Choose a taller image when there are more characters.
-            const numChars = grp.base.type === "ordgroup" ?
-                grp.base.body.length : 1;
+            const numChars = group.base.type === "ordgroup" ?
+                group.base.body.length : 1;
             let viewBoxHeight;
             let pathName;
             let height;
@@ -240,6 +228,9 @@ export const stretchySvg = function(
             const spans = [];
 
             const data = katexImagesData[label];
+            if (!data) {
+                throw new Error(`No SVG data for "${label}".`);
+            }
             const [paths, minWidth, viewBoxHeight] = data;
             const height = viewBoxHeight / 1000;
 
@@ -247,11 +238,12 @@ export const stretchySvg = function(
             let widthClasses;
             let aligns;
             if (numSvgChildren === 1) {
-                // TODO(ts): All these cases must be of the 4-tuple type.
-                const align1: string =
-                    (data as [[string], number, number, string])[3];
+                if (data.length !== 4) {
+                    throw new Error(
+                        `Expected 4-tuple for single-path SVG data "${label}".`);
+                }
                 widthClasses = ["hide-tail"];
-                aligns = [align1];
+                aligns = [data[3]];
             } else if (numSvgChildren === 2) {
                 widthClasses = ["halfarrow-left", "halfarrow-right"];
                 aligns = ["xMinYMin", "xMaxYMin"];

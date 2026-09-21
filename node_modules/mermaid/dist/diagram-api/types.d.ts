@@ -32,6 +32,7 @@ export interface DiagramDB {
     getDirection?: () => string | undefined;
     setDirection?: (dir: DiagramOrientation) => void;
     setDisplayMode?: (title: string) => void;
+    setDiagramId?: (svgElementId: string) => void;
     bindFunctions?: (element: Element) => void;
 }
 /**
@@ -42,7 +43,14 @@ export type DiagramDBBase<T extends BaseDiagramConfig> = {
 } & SetRequired<DiagramDB, 'clear' | 'getAccTitle' | 'getDiagramTitle' | 'getAccDescription' | 'setAccDescription' | 'setAccTitle' | 'setDiagramTitle'>;
 export interface DiagramStyleClassDef {
     id: string;
+    /**
+     * The styles to apply to the class for HTML rendering.
+     * These are expected to be CSS property declarations without a trailing semicolon, e.g. `color: red`.
+     */
     styles?: string[];
+    /**
+     * The styles to apply to `<tspan>` elements with the given class.
+     */
     textStyles?: string[];
 }
 export interface DiagramRenderer {
@@ -88,4 +96,4 @@ export interface ParserDefinition {
 export type HTML = d3.Selection<HTMLIFrameElement, unknown, Element | null, unknown>;
 export type SVG = d3.Selection<SVGSVGElement, unknown, Element | null, unknown>;
 export type SVGGroup = d3.Selection<SVGGElement, unknown, Element | null, unknown>;
-export type DiagramStylesProvider = (options?: any) => string;
+export type DiagramStylesProvider = (options?: any, svgId?: string) => string;
