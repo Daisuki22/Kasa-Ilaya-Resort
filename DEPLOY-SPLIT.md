@@ -3,7 +3,7 @@
 The project is separated into two deployable folders:
 
 - `frontend/` - Vite/React app for Vercel
-- `backend/` - PHP/MySQL API for Render
+- `backend/` - Node.js/Express API for local development and Render.
 
 ## Frontend on Vercel
 
@@ -26,44 +26,41 @@ VITE_API_BASE_URL=https://your-render-service.onrender.com/api
 
 Deploy from the `backend/` folder.
 
-Render should use:
+Create a Render Web Service with:
 
-- `backend/render.yaml`
-- `backend/Dockerfile`
-- `backend/deploy/render/nginx.conf.template`
+- Runtime: Node
+- Build Command: `npm ci`
+- Start Command: `npm start`
+
+The Node server must listen on
+`process.env.PORT`; TiDB's `4000` is only the database port.
 
 Set these Render environment variables:
 
 ```env
-KASA_API_PATH=/api
-KASA_FRONTEND_URL=https://your-vercel-site.vercel.app
+NODE_ENV=production
+FRONTEND_URL=https://your-vercel-site.vercel.app
 
-MYSQLHOST=your-mysql-host
-MYSQLPORT=3306
-MYSQLDATABASE=kasa_ilaya_resort
-MYSQLUSER=your-mysql-user
-MYSQLPASSWORD=your-mysql-password
+KASA_DB_HOST=gateway01.ap-southeast-1.prod.aws.tidbcloud.com
+KASA_DB_PORT=4000
+KASA_DB_NAME=kasa_ilaya_resort
+KASA_DB_USER=your-tidb-user
+KASA_DB_PASS=your-tidb-password
 ```
 
-Optional production variables:
-
-```env
-KASA_MAIL_ENABLED=true
-KASA_SMS_ENABLED=true
-SEMAPHORE_API_KEY=your-key
-```
+Optional SMTP variables are documented in [backend/README.md](backend/README.md).
 
 After Render deploys, check:
 
 ```text
-https://your-render-service.onrender.com/api/health.php
+https://your-render-service.onrender.com/
 ```
 
 If login or API calls fail:
 
-- Confirm Vercel `VITE_API_BASE_URL` points to the Render `/api` URL.
-- Confirm Render `KASA_FRONTEND_URL` exactly matches the Vercel site origin, without a trailing slash.
-- Confirm the MySQL credentials are correct and reachable from Render.
+- Confirm Vercel `VITE_API_BASE_URL` points to the Render API URL.
+- Confirm Render `FRONTEND_URL` exactly matches the Vercel site origin, without a trailing slash.
+- Confirm the TiDB credentials are correct and reachable from Render.
 
 ## Local development
 
@@ -74,14 +71,18 @@ cd frontend
 npm run dev
 ```
 
-Backend stays under:
+Start the Node backend in a second terminal:
 
-```text
-backend/api
+```bash
+cd backend
+npm run dev
 ```
 
-The frontend dev server proxies `/api` to:
+Set local MySQL connection values and a development `JWT_SECRET` in
+`backend/.env`. The Vite proxy forwards `/api` requests to `localhost:10000`.
+
+The frontend dev server proxies `/api` to the Node backend at:
 
 ```text
-http://localhost/Kasa-Ilaya-Resort/backend/api
+http://localhost:10000
 ```

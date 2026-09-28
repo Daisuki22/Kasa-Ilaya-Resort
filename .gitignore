@@ -1,0 +1,17 @@
+config.local.php
+backend/api/config.local.php
+.env
+.env.local
+.env.production
+node_modules/
+dist/
+tmp-responsive/
+frontend/node_modules/
+frontend/dist/
+backend/api/runtime/sessions/
+backend/deploy/infinityfree-handoff/chrome-profile/
+backend/deploy/infinityfree-handoff/chrome-profile2/
+backend/deploy/infinityfree-handoff/kasa-ilaya-htdocs.zip
+vite-dev*.log
+npm-debug.log
+.vercel/
